@@ -2021,6 +2021,52 @@ ALWAYS use the composite format for complex objects. ALWAYS include 8+ parts for
 ONLY use [3D_SHAPE_RENDER] for requests where the user explicitly wants an interactive rotatable 3D geometric model (simple shapes, objects made of primitives).
 Do NOT output HTML canvas code, base64, or image URLs for 3D shapes. ONLY use the token format above. `;
 
+      systemInstruction += `LIVE ANIMATED 3D SCENES — USE FOR ANY "SHOW ME", "LIVE", "ANIMATED", "3D VIEW" REQUEST:
+
+You have TWO tokens. The frontend has a SMART MAPPER that handles ANY keyword — so you are NOT limited to the list below. Use the closest word that describes what the user wants.
+
+━━━ TOKEN 1: [3D_ANIMATED: scene=<name>] ━━━
+Use ONLY for: dragon, phoenix, galaxy, blackhole, tornado, rocket
+
+━━━ TOKEN 2: [3D_DYNAMIC: scene=<anything>] ━━━
+Use for LITERALLY ANYTHING ELSE. The system auto-maps to the best matching 3D scene.
+You can use ANY of these (and more — just use the best keyword):
+shark, whale, dolphin, octopus, jellyfish, turtle, fish, clownfish, mermaid,
+eagle, hawk, falcon, owl, butterfly, dragonfly, bee, hummingbird,
+tiger, lion, wolf, bear, deer, horse, elephant, giraffe, zebra, rabbit,
+snake, crocodile, frog, lizard, chameleon,
+volcano, lava, eruption, fire, mountain, canyon, cave, desert,
+forest, jungle, rainforest, tree, meadow, valley, waterfall,
+snow, snowman, blizzard, ice, winter, arctic,
+planet, saturn, jupiter, mars, moon, asteroid, comet, solarsystem, nebula, alien, ufo, astronaut,
+space, spaceship, satellite, star,
+plane, airplane, helicopter, drone, submarine
+
+CRITICAL RULES:
+1. When user asks for ANY live/moving/animated/3D view of ANYTHING → use [3D_DYNAMIC: scene=<best_keyword>]
+2. The scene= value should be a single English word matching the subject (tiger, waterfall, snowman, etc.)
+3. User gets 360° rotation by dragging + zoom by scrolling
+4. ALWAYS combine the token with a brief explanation
+5. For objects not in the list, pick the CLOSEST related keyword (e.g. "crocodile" → scene=crocodile, "flamingo" → scene=eagle, "whale shark" → scene=shark)
+
+EXAMPLES (literally any request):
+- "show me a tiger" → [3D_DYNAMIC: scene=tiger]
+- "live view of dolphin" → [3D_DYNAMIC: scene=dolphin]
+- "show whale in ocean" → [3D_DYNAMIC: scene=whale]
+- "3D view of waterfall" → [3D_DYNAMIC: scene=waterfall]
+- "show me a horse running" → [3D_DYNAMIC: scene=horse]
+- "live snowstorm" → [3D_DYNAMIC: scene=snow]
+- "animated forest" → [3D_DYNAMIC: scene=forest]
+- "show planet saturn" → [3D_DYNAMIC: scene=saturn]
+- "3D view of volcano" → [3D_DYNAMIC: scene=volcano]
+- "show me a butterfly" → [3D_DYNAMIC: scene=butterfly]
+- "live solar system" → [3D_DYNAMIC: scene=solarsystem]
+- "show an eagle flying" → [3D_DYNAMIC: scene=eagle]
+- "3D view of underwater" → [3D_DYNAMIC: scene=underwater]
+- "show a comet" → [3D_DYNAMIC: scene=comet]
+- "show a rainforest" → [3D_DYNAMIC: scene=rainforest]
+`;
+
       systemInstruction += `AI IMAGE GENERATION — COLORFUL 3D RENDERED IMAGES:
 When the user asks you to generate, create, or make ANY kind of IMAGE (whether they say "3D image", "image", "picture", "photo", "generate", "create", "draw", "make an image of" etc.), you MUST output this special token:
 

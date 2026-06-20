@@ -12,6 +12,67 @@ import WorkflowPanel from './WorkflowPanel';
 const MindMap3D = React.lazy(() => import('./MindMap3D'));
 const Interactive3DObject = React.lazy(() => import('./Interactive3DObject'));
 
+// AI Image Renderer with loading state and retry
+function AIImageRenderer({ prompt }) {
+  const [status, setStatus] = useState('loading'); // loading | loaded | error
+  const [retryCount, setRetryCount] = useState(0);
+  const cleanPrompt = prompt.replace(/[^\w\s,.\-!?']/g, ' ').trim();
+  const encodedPrompt = encodeURIComponent(cleanPrompt);
+  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${retryCount}`;
+
+  return (
+    <div style={{ margin: '15px 0', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(0,242,254,0.15)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', position: 'relative', background: 'rgba(6,6,18,0.8)' }}>
+      <div style={{ position: 'absolute', top: '12px', left: '12px', zIndex: 10, background: 'rgba(0,0,0,0.7)', padding: '5px 14px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', fontSize: '0.8rem', fontWeight: 'bold', color: '#fff', fontFamily: 'Inter, sans-serif', backdropFilter: 'blur(8px)' }}>
+        🎨 AI Generated Image
+      </div>
+      {status === 'loaded' && (
+        <div style={{ position: 'absolute', top: '12px', right: '12px', zIndex: 10 }}>
+          <a href={imageUrl} target="_blank" rel="noopener noreferrer" style={{ background: 'rgba(0,0,0,0.7)', padding: '5px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', fontSize: '0.75rem', color: '#00f2fe', textDecoration: 'none', fontFamily: 'Inter, sans-serif', backdropFilter: 'blur(8px)' }}>
+            ⬇ Download HD
+          </a>
+        </div>
+      )}
+      
+      {status === 'loading' && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '400px', flexDirection: 'column', gap: '15px' }}>
+          <div style={{ width: '50px', height: '50px', border: '3px solid rgba(0,242,254,0.2)', borderTop: '3px solid #00f2fe', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+          <span style={{ color: '#00f2fe', fontSize: '0.9rem', fontFamily: 'Inter, sans-serif' }}>🎨 Generating your image... This may take 10-30 seconds</span>
+          <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>Powered by AI Image Generation</span>
+        </div>
+      )}
+
+      <img 
+        src={imageUrl} 
+        alt={prompt}
+        crossOrigin="anonymous"
+        style={{ width: '100%', maxHeight: '550px', objectFit: 'contain', display: status === 'loaded' ? 'block' : 'none', background: '#0a0a1a' }}
+        onLoad={() => setStatus('loaded')}
+        onError={() => {
+          if (retryCount < 3) {
+            setRetryCount(retryCount + 1);
+            setStatus('loading');
+          } else {
+            setStatus('error');
+          }
+        }}
+      />
+
+      {status === 'error' && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px', color: '#ff5555', fontSize: '0.9rem', flexDirection: 'column', gap: '15px' }}>
+          <span>⚠️ Image generation failed after 3 attempts.</span>
+          <button onClick={() => { setRetryCount(0); setStatus('loading'); }} style={{ background: 'rgba(0,242,254,0.1)', border: '1px solid #00f2fe', color: '#00f2fe', padding: '8px 20px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
+            🔄 Retry
+          </button>
+        </div>
+      )}
+
+      <div style={{ padding: '10px 15px', fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', borderTop: '1px solid rgba(255,255,255,0.05)', fontFamily: 'Inter, sans-serif' }}>
+        Prompt: {prompt}
+      </div>
+    </div>
+  );
+}
+
 // Initialize Mermaid.js configuration
 try {
   mermaid.initialize({
@@ -962,34 +1023,9 @@ function Dashboard({
               if (endIdx !== -1) {
                 const tokenContent = line.substring(startIdx + 10, endIdx);
                 const promptParam = tokenContent.match(/prompt\s*=\s*(.+)/);
-                const imagePrompt = promptParam ? promptParam[1].trim() : 'abstract digital art';
-                const encodedPrompt = encodeURIComponent(imagePrompt);
-                const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${Date.now()}`;
+                const imagePrompt = promptParam ? promptParam[1].trim() : 'abstract colorful digital art 3D rendered';
                 
-                return (
-                  <div key={lineIdx} style={{ margin: '15px 0', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(0,242,254,0.15)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', position: 'relative', background: 'rgba(6,6,18,0.8)' }}>
-                    <div style={{ position: 'absolute', top: '12px', left: '12px', zIndex: 10, background: 'rgba(0,0,0,0.7)', padding: '5px 14px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', fontSize: '0.8rem', fontWeight: 'bold', color: '#fff', fontFamily: 'Inter, sans-serif', backdropFilter: 'blur(8px)' }}>
-                      🎨 AI Generated Image
-                    </div>
-                    <div style={{ position: 'absolute', top: '12px', right: '12px', zIndex: 10, display: 'flex', gap: '8px' }}>
-                      <a href={imageUrl} target="_blank" rel="noopener noreferrer" download style={{ background: 'rgba(0,0,0,0.7)', padding: '5px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', fontSize: '0.75rem', color: '#00f2fe', textDecoration: 'none', fontFamily: 'Inter, sans-serif', backdropFilter: 'blur(8px)' }}>
-                        ⬇ Download
-                      </a>
-                    </div>
-                    <img 
-                      src={imageUrl} 
-                      alt={imagePrompt} 
-                      style={{ width: '100%', maxHeight: '550px', objectFit: 'contain', display: 'block', background: '#0a0a1a' }}
-                      onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                    />
-                    <div style={{ display: 'none', alignItems: 'center', justifyContent: 'center', height: '300px', color: '#ff5555', fontSize: '0.9rem', flexDirection: 'column', gap: '10px' }}>
-                      <span>⚠️ Image generation failed. Try again.</span>
-                    </div>
-                    <div style={{ padding: '10px 15px', fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', borderTop: '1px solid rgba(255,255,255,0.05)', fontFamily: 'Inter, sans-serif' }}>
-                      Prompt: {imagePrompt}
-                    </div>
-                  </div>
-                );
+                return <AIImageRenderer key={lineIdx} prompt={imagePrompt} />;
               }
             }
 

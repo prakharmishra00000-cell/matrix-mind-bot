@@ -3,6 +3,92 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 
+// ── PROCEDURAL IRIS TEXTURE GENERATOR ─────────────────────────────────────
+function useProceduralIris(irisColor1, irisColor2, pupilColor, isReptile = false) {
+  return useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+
+    // 1. Base gradient for iris
+    const grad = ctx.createRadialGradient(256, 256, 20, 256, 256, 256);
+    grad.addColorStop(0, irisColor1);
+    grad.addColorStop(0.65, irisColor2);
+    grad.addColorStop(0.9, '#000000'); // Limbal ring
+    grad.addColorStop(1, '#000000');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 512, 512);
+
+    // 2. Draw organic stroma fibers (radial lines)
+    const drawFibers = (count, color, minLen, maxLen, thickness) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = thickness;
+      for (let i = 0; i < count; i++) {
+        const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.05;
+        const startRad = 35 + Math.random() * 20;
+        const length = minLen + Math.random() * (maxLen - minLen);
+        ctx.beginPath();
+        ctx.moveTo(256 + Math.cos(angle) * startRad, 256 + Math.sin(angle) * startRad);
+        ctx.lineTo(256 + Math.cos(angle) * length, 256 + Math.sin(angle) * length);
+        ctx.stroke();
+      }
+    };
+
+    // Draw dark radial lines
+    drawFibers(250, 'rgba(0, 0, 0, 0.45)', 60, 240, 1.5);
+    // Draw bright stroma fibers (light reflection)
+    drawFibers(180, 'rgba(255, 255, 255, 0.25)', 45, 180, 1.0);
+    // Draw iris-colored detailed threads
+    drawFibers(300, irisColor1, 50, 220, 1.2);
+
+    // 3. Draw a ring of spots/crypts (iris crypts)
+    for (let i = 0; i < 40; i++) {
+      const angle = (i / 40) * Math.PI * 2 + Math.random() * 0.1;
+      const dist = 90 + Math.random() * 60;
+      const size = 3 + Math.random() * 8;
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.arc(256 + Math.cos(angle) * dist, 256 + Math.sin(angle) * dist, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 4. Draw outer limbal ring detail
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.lineWidth = 12;
+    ctx.beginPath();
+    ctx.arc(256, 256, 248, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 5. Draw pupil
+    ctx.fillStyle = pupilColor;
+    ctx.beginPath();
+    if (isReptile) {
+      ctx.ellipse(256, 256, 30, 120, 0, 0, Math.PI * 2);
+    } else {
+      ctx.arc(256, 256, 50, 0, Math.PI * 2);
+    }
+    ctx.fill();
+
+    // 6. Draw organic pupil border detail (collarette)
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    if (isReptile) {
+      ctx.ellipse(256, 256, 35, 125, 0, 0, Math.PI * 2);
+    } else {
+      ctx.arc(256, 256, 55, 0, Math.PI * 2);
+    }
+    ctx.stroke();
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    return texture;
+  }, [irisColor1, irisColor2, pupilColor, isReptile]);
+}
+
 // ── ADVANCED COLOR-SHIFTING PARTICLE SYSTEM ──────────────────────────────
 function FireParticles({ pos=[0,0,0], count=100, spread=0.25, speed=2, sizeScale=1 }) {
   const mesh = useRef();
@@ -177,31 +263,29 @@ function DragonLeg({ pos=[0,0,0], side=1 }) {
   );
 }
 
-// ── DRAGON EYE (REALISTIC GLASSY LENS + IRIS) ─────────────────────────────
+// ── DRAGON EYE (REALISTIC GLASSY LENS + PROCEDURAL IRIS) ──────────────────
 function DragonEye({ side=1 }) {
   const eyeRef = useRef();
+  const texture = useProceduralIris('#ff6a00', '#3b0800', '#000000', true);
+
   useFrame(({ clock }) => {
     if (eyeRef.current) {
       // Subtle organic twitching
       eyeRef.current.rotation.y = Math.sin(clock.elapsedTime * 2.2) * 0.06;
     }
   });
+
   return (
     <group position={[0.18, 0.12, side * 0.22]} ref={eyeRef}>
       {/* Outer glassy cornea */}
       <mesh>
-        <sphereGeometry args={[0.09, 16, 16]} />
-        <meshPhysicalMaterial color="#ffffff" transmission={0.92} thickness={0.15} roughness={0.02} clearcoat={1.0} />
+        <sphereGeometry args={[0.09, 32, 32]} />
+        <meshPhysicalMaterial color="#ffffff" transmission={0.98} thickness={0.12} roughness={0.002} clearcoat={1.0} clearcoatRoughness={0.05} />
       </mesh>
-      {/* Inner glowing orange/red Iris */}
-      <mesh position={[0.015, 0, 0]}>
-        <sphereGeometry args={[0.075, 12, 12]} />
-        <meshStandardMaterial color="#ff4400" emissive="#ff2200" emissiveIntensity={3.5} roughness={0.1} />
-      </mesh>
-      {/* Dark slit-like pupil (predator eye) */}
-      <mesh position={[0.04, 0, 0]} scale={[1, 2.2, 0.35]}>
-        <sphereGeometry args={[0.03, 10, 10]} />
-        <meshStandardMaterial color="#000" roughness={0.2} />
+      {/* Inner glowing procedural Iris */}
+      <mesh position={[0.015, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
+        <circleGeometry args={[0.08, 32]} />
+        <meshPhysicalMaterial map={texture} roughness={0.1} metalness={0.15} emissive="#ff3300" emissiveIntensity={0.8} side={THREE.DoubleSide} />
       </mesh>
     </group>
   );
@@ -260,9 +344,9 @@ function FlyingDragon() {
   return (
     <group>
       {/* Dynamic ambient lights */}
-      <pointLight position={[3, 1, 0]} intensity={4.5} color="#FF4500" distance={8} decay={2} />
-      <pointLight position={[-4, 2, 0]} intensity={1.5} color="#4477ff" distance={12} />
-      <spotLight position={[0, 8, 3]} intensity={2.5} angle={0.5} penumbra={0.5} color="#ff8844" />
+      <pointLight position={[3, 1, 0]} intensity={12.0} color="#FF4500" distance={8} decay={2} />
+      <pointLight position={[-4, 2, 0]} intensity={5.0} color="#4477ff" distance={12} />
+      <spotLight position={[0, 8, 3]} intensity={8.0} angle={0.5} penumbra={0.5} color="#ff8844" />
 
       <group ref={root}>
         {/* Body trunk */}
@@ -430,9 +514,28 @@ function FlyingDragon() {
         <FireParticles pos={[2.8, 0.1, 0]} count={60} spread={0.38} speed={1.8} sizeScale={1.5} />
         
         {/* Fire lights */}
-        <pointLight ref={fireLight} position={[3, 0.5, 0]} intensity={6.5} color="#FF6600" distance={6} decay={2} />
-        <pointLight position={[2.5, 0.2, 0]} intensity={3.5} color="#44AAFF" distance={3.5} decay={2} />
+        <pointLight ref={fireLight} position={[3, 0.5, 0]} intensity={14.0} color="#FF6600" distance={6} decay={2} />
+        <pointLight position={[2.5, 0.2, 0]} intensity={8.0} color="#44AAFF" distance={3.5} decay={2} />
       </group>
+    </group>
+  );
+}
+
+// ── PHOENIX EYE ───────────────────────────────────────────────────────────
+function PhoenixEye({ side=1 }) {
+  const texture = useProceduralIris('#ffdd00', '#b81400', '#000000', false);
+  return (
+    <group position={[0.2, 0.08, side * 0.12]}>
+      {/* Glass cornea */}
+      <mesh>
+        <sphereGeometry args={[0.065, 24, 24]} />
+        <meshPhysicalMaterial color="#ffffff" transmission={0.96} thickness={0.08} roughness={0.005} clearcoat={1.0} />
+      </mesh>
+      {/* Iris disk */}
+      <mesh position={[0.01, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
+        <circleGeometry args={[0.058, 24]} />
+        <meshPhysicalMaterial map={texture} roughness={0.1} metalness={0.1} emissive="#ff5500" emissiveIntensity={0.6} side={THREE.DoubleSide} />
+      </mesh>
     </group>
   );
 }
@@ -481,7 +584,7 @@ function PhoenixScene() {
 
   return (
     <group ref={body}>
-      <pointLight intensity={7} color="#FF5500" distance={8} decay={2} />
+      <pointLight intensity={16.0} color="#FF5500" distance={8} decay={2} />
       {/* Body */}
       <mesh>
         <capsuleGeometry args={[0.32, 1.3, 10, 16]} />
@@ -511,13 +614,9 @@ function PhoenixScene() {
             <meshPhysicalMaterial {...fMat} />
           </mesh>
         ))}
-        {/* Eyes (glassy) */}
-        {[0.12, -0.12].map((z, i) => (
-          <mesh key={i} position={[0.2, 0.08, z]}>
-            <sphereGeometry args={[0.06, 10, 10]} />
-            <meshStandardMaterial color="#ffff00" emissive="#ffee00" emissiveIntensity={2.5} />
-          </mesh>
-        ))}
+        {/* Eyes (Glassy + Procedural) */}
+        <PhoenixEye side={1} />
+        <PhoenixEye side={-1} />
       </group>
       {/* Wings */}
       <group ref={wL} position={[0, 0.2, 0.4]}>
@@ -660,7 +759,7 @@ function GalaxyScene() {
       {/* Galactic core */}
       <mesh><sphereGeometry args={[0.45, 24, 24]} /><meshStandardMaterial color="#FFFFEE" emissive="#FFFF77" emissiveIntensity={5} /></mesh>
       <mesh><sphereGeometry args={[0.72, 24, 24]} /><meshPhysicalMaterial color="#FFEEBB" transparent opacity={0.35} transmission={0.9} roughness={0.1} /></mesh>
-      <pointLight intensity={8} color="#FFEEBB" distance={12} decay={2} />
+      <pointLight intensity={18.0} color="#FFEEBB" distance={12} decay={2} />
     </group>
   );
 }
@@ -738,9 +837,9 @@ function BlackHoleScene() {
         <meshStandardMaterial color="#ffbb44" emissive="#ff7700" emissiveIntensity={2.5} />
       </instancedMesh>
       
-      <pointLight intensity={5} color="#FF5500" distance={10} decay={2} />
-      <pointLight position={[0, 5, 0]} intensity={3.5} color="#4466FF" distance={8} />
-      <pointLight position={[0, -5, 0]} intensity={3.5} color="#4466FF" distance={8} />
+      <pointLight intensity={12.0} color="#FF5500" distance={10} decay={2} />
+      <pointLight position={[0, 5, 0]} intensity={9.0} color="#4466FF" distance={8} />
+      <pointLight position={[0, -5, 0]} intensity={9.0} color="#4466FF" distance={8} />
     </group>
   );
 }
@@ -779,6 +878,8 @@ function TornadoScene() {
 
   return (
     <group>
+      {/* Storm internal lightning core */}
+      <pointLight position={[0, 0, 0]} intensity={12.0} color="#7a33ff" distance={8} decay={1.5} />
       {/* Tornado Core Rings */}
       <group ref={spinRef}>
         {[0, 1, 2, 3, 4, 5, 6, 7].map(i => (
@@ -933,7 +1034,9 @@ export default function AnimatedScene3D({ scene='dragon', label }) {
       <div style={{ position:'absolute', bottom:'12px', right:'15px', fontSize:'11px', color:'rgba(255,255,255,0.5)', pointerEvents:'none', fontFamily:'Inter,sans-serif', background:'rgba(0,0,0,0.4)', padding:'2px 8px', borderRadius:'4px', zIndex:10 }}>🖱️ Drag to rotate · Scroll to zoom</div>
       <Canvas camera={{ position:cfg.cam, fov:48 }} shadows>
         <color attach="background" args={[cfg.bg]}/>
-        <ambientLight intensity={0.3}/>
+        <ambientLight intensity={1.3}/>
+        <directionalLight position={[10, 15, 10]} intensity={2.2} castShadow />
+        <directionalLight position={[-10, -5, -10]} intensity={0.9} />
         <Stars radius={100} depth={50} count={4000} factor={4} fade/>
         <Comp/>
         <OrbitControls enableZoom maxDistance={22} minDistance={3} enableDamping dampingFactor={0.08}/>

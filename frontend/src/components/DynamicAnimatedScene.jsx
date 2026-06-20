@@ -3,6 +3,92 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 
+// ── PROCEDURAL IRIS TEXTURE GENERATOR ─────────────────────────────────────
+function useProceduralIris(irisColor1, irisColor2, pupilColor, isReptile = false) {
+  return useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+
+    // 1. Base gradient for iris
+    const grad = ctx.createRadialGradient(256, 256, 20, 256, 256, 256);
+    grad.addColorStop(0, irisColor1);
+    grad.addColorStop(0.65, irisColor2);
+    grad.addColorStop(0.9, '#000000'); // Limbal ring
+    grad.addColorStop(1, '#000000');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 512, 512);
+
+    // 2. Draw organic stroma fibers (radial lines)
+    const drawFibers = (count, color, minLen, maxLen, thickness) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = thickness;
+      for (let i = 0; i < count; i++) {
+        const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.05;
+        const startRad = 35 + Math.random() * 20;
+        const length = minLen + Math.random() * (maxLen - minLen);
+        ctx.beginPath();
+        ctx.moveTo(256 + Math.cos(angle) * startRad, 256 + Math.sin(angle) * startRad);
+        ctx.lineTo(256 + Math.cos(angle) * length, 256 + Math.sin(angle) * length);
+        ctx.stroke();
+      }
+    };
+
+    // Draw dark radial lines
+    drawFibers(250, 'rgba(0, 0, 0, 0.45)', 60, 240, 1.5);
+    // Draw bright stroma fibers (light reflection)
+    drawFibers(180, 'rgba(255, 255, 255, 0.25)', 45, 180, 1.0);
+    // Draw iris-colored detailed threads
+    drawFibers(300, irisColor1, 50, 220, 1.2);
+
+    // 3. Draw a ring of spots/crypts (iris crypts)
+    for (let i = 0; i < 40; i++) {
+      const angle = (i / 40) * Math.PI * 2 + Math.random() * 0.1;
+      const dist = 90 + Math.random() * 60;
+      const size = 3 + Math.random() * 8;
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.arc(256 + Math.cos(angle) * dist, 256 + Math.sin(angle) * dist, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 4. Draw outer limbal ring detail
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.lineWidth = 12;
+    ctx.beginPath();
+    ctx.arc(256, 256, 248, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 5. Draw pupil
+    ctx.fillStyle = pupilColor;
+    ctx.beginPath();
+    if (isReptile) {
+      ctx.ellipse(256, 256, 30, 120, 0, 0, Math.PI * 2);
+    } else {
+      ctx.arc(256, 256, 50, 0, Math.PI * 2);
+    }
+    ctx.fill();
+
+    // 6. Draw organic pupil border detail (collarette)
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    if (isReptile) {
+      ctx.ellipse(256, 256, 35, 125, 0, 0, Math.PI * 2);
+    } else {
+      ctx.arc(256, 256, 55, 0, Math.PI * 2);
+    }
+    ctx.stroke();
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    return texture;
+  }, [irisColor1, irisColor2, pupilColor, isReptile]);
+}
+
 // ── ADVANCED COLOR-SHIFTING PARTICLE SYSTEM ──────────────────────────────
 function Particles({ type = 'fire', position = [0,0,0], count = 60, scale = 1 }) {
   const mesh = useRef();
@@ -107,6 +193,25 @@ function OceanFloor() {
 
 // ── SPECIFIC DETAILED OBJECT BUILDERS ─────────────────────────────────────
 
+// ── SHARK EYE ─────────────────────────────────────────────────────────────
+function SharkEye({ side=1 }) {
+  const texture = useProceduralIris('#4b7a9e', '#071520', '#000000', false);
+  return (
+    <group position={[side * 0.15, 0.1, 1.0]}>
+      {/* Glass cornea */}
+      <mesh>
+        <sphereGeometry args={[0.048, 20, 20]} />
+        <meshPhysicalMaterial color="#ffffff" transmission={0.98} thickness={0.06} roughness={0.002} clearcoat={1.0} />
+      </mesh>
+      {/* Iris disk */}
+      <mesh position={[0, 0, 0.008]} rotation={[0, 0, 0]}>
+        <circleGeometry args={[0.042, 20]} />
+        <meshStandardMaterial map={texture} roughness={0.05} />
+      </mesh>
+    </group>
+  );
+}
+
 function Shark({ position = [0,0,0], scale = 1 }) {
   const ref = useRef();
   const tailRef = useRef();
@@ -149,13 +254,9 @@ function Shark({ position = [0,0,0], scale = 1 }) {
       {/* Snout */}
       <mesh position={[0,0,0.85]} rotation={[0.15,0,0]}><coneGeometry args={[0.26,0.6,8]}/><meshPhysicalMaterial {...skinMat}/></mesh>
       
-      {/* Predator Eyes (glassy outer cornea) */}
-      {[0.15, -0.15].map((x, i) => (
-        <group key={i} position={[x, 0.1, 1.0]}>
-          <mesh><sphereGeometry args={[0.045, 12, 12]}/><meshPhysicalMaterial color="#ffffff" transmission={0.9} thickness={0.1} roughness={0.05}/></mesh>
-          <mesh position={[0.01 * Math.sign(x), 0, 0.015]}><sphereGeometry args={[0.025, 8, 8]}/><meshStandardMaterial color="#000" roughness={0.1}/></mesh>
-        </group>
-      ))}
+      {/* Predator Eyes (Glassy + Procedural) */}
+      <SharkEye side={1} />
+      <SharkEye side={-1} />
 
       {/* Gills */}
       {[0.4, 0.48, 0.56].map((z, i) => (
@@ -295,11 +396,30 @@ function Volcano({ position = [0,0,0], scale = 1 }) {
         </mesh>
       </group>
 
-      <pointLight position={[0, 0.8, 0]} intensity={7} color="#ff4400" distance={10} decay={2}/>
+      <pointLight position={[0, 0.8, 0]} intensity={16} color="#ff4400" distance={10} decay={2}/>
       <Particles type="fire" position={[0, 0.6, 0]} count={100} scale={1.2}/>
       <Particles type="smoke" position={[0, 1.2, 0]} count={40} scale={1.8}/>
       <Particles type="lava" position={[0.2, 0.4, 0.2]} count={50} scale={0.7}/>
       <Particles type="lava" position={[-0.2, 0.4, -0.15]} count={50} scale={0.7}/>
+    </group>
+  );
+}
+
+// ── FISH EYE ──────────────────────────────────────────────────────────────
+function FishEye({ side=1 }) {
+  const texture = useProceduralIris('#ffea66', '#c46b08', '#000000', false);
+  return (
+    <group position={[side * 0.12, 0.08, 0.22]}>
+      {/* Glass cornea */}
+      <mesh>
+        <sphereGeometry args={[0.038, 16, 16]} />
+        <meshPhysicalMaterial color="#ffffff" transmission={0.98} thickness={0.04} roughness={0.002} clearcoat={1.0} />
+      </mesh>
+      {/* Iris disk */}
+      <mesh position={[side * 0.006, 0, 0.006]} rotation={[0, side * Math.PI / 2.5, 0]}>
+        <circleGeometry args={[0.032, 16]} />
+        <meshStandardMaterial map={texture} roughness={0.05} />
+      </mesh>
     </group>
   );
 }
@@ -342,11 +462,9 @@ function Fish({ position = [0,0,0], color = '#FF8800', scale = 1 }) {
         <mesh position={[0, 0, -0.15]} rotation={[0,0,0.5]}><boxGeometry args={[0.02, 0.35, 0.3]}/><meshPhysicalMaterial {...fishMat}/></mesh>
         <mesh position={[0, 0, -0.15]} rotation={[0,0,-0.5]}><boxGeometry args={[0.02, 0.35, 0.3]}/><meshPhysicalMaterial {...fishMat}/></mesh>
       </group>
-      {/* Glassy Eyes */}
-      <mesh position={[0.12, 0.08, 0.22]}><sphereGeometry args={[0.035, 8, 8]}/><meshPhysicalMaterial color="#fff" clearcoat={1.0}/></mesh>
-      <mesh position={[0.13, 0.08, 0.23]}><sphereGeometry args={[0.02, 6, 6]}/><meshStandardMaterial color="#000"/></mesh>
-      <mesh position={[-0.12, 0.08, 0.22]}><sphereGeometry args={[0.035, 8, 8]}/><meshPhysicalMaterial color="#fff" clearcoat={1.0}/></mesh>
-      <mesh position={[-0.13, 0.08, 0.23]}><sphereGeometry args={[0.02, 6, 6]}/><meshStandardMaterial color="#000"/></mesh>
+      {/* Glassy + Procedural Eyes */}
+      <FishEye side={1} />
+      <FishEye side={-1} />
       {/* Fins */}
       <mesh position={[0, 0.22, -0.05]} rotation={[0.3, 0, 0]}><boxGeometry args={[0.02, 0.15, 0.22]}/><meshPhysicalMaterial {...fishMat}/></mesh>
       <mesh position={[0.15, -0.08, 0.05]} rotation={[0.3, 0, -0.4]}><boxGeometry args={[0.12, 0.02, 0.15]}/><meshPhysicalMaterial {...fishMat}/></mesh>
@@ -414,6 +532,25 @@ function Planet({ position = [0,0,0], color = '#4466FF', hasRings = false, hasAt
   );
 }
 
+// ── EAGLE EYE ─────────────────────────────────────────────────────────────
+function EagleEye({ side=1 }) {
+  const texture = useProceduralIris('#ffdd00', '#663a00', '#000000', false);
+  return (
+    <group position={[side * 0.09, 0.42, 0.16]}>
+      {/* Glass cornea */}
+      <mesh>
+        <sphereGeometry args={[0.028, 16, 16]} />
+        <meshPhysicalMaterial color="#ffffff" transmission={0.98} thickness={0.03} roughness={0.002} clearcoat={1.0} />
+      </mesh>
+      {/* Iris disk */}
+      <mesh position={[0, 0, 0.004]} rotation={[0, 0, 0]}>
+        <circleGeometry args={[0.024, 16]} />
+        <meshStandardMaterial map={texture} roughness={0.05} />
+      </mesh>
+    </group>
+  );
+}
+
 function Eagle({ position = [0,0,0], color = '#614830', scale = 1 }) {
   const ref = useRef();
   const wingL = useRef();
@@ -456,9 +593,9 @@ function Eagle({ position = [0,0,0], color = '#614830', scale = 1 }) {
         <mesh><coneGeometry args={[0.05, 0.15, 6]}/><meshPhysicalMaterial {...beakMat}/></mesh>
         <mesh position={[0,-0.06,0.02]} rotation={[0.5,0,0]}><coneGeometry args={[0.03, 0.08, 6]}/><meshPhysicalMaterial {...beakMat}/></mesh>
       </group>
-      {/* Yellow glowing eyes */}
-      <mesh position={[0.09, 0.42, 0.16]}><sphereGeometry args={[0.025, 6, 6]}/><meshStandardMaterial color="#000" emissive="#fca311" emissiveIntensity={1.5}/></mesh>
-      <mesh position={[-0.09, 0.42, 0.16]}><sphereGeometry args={[0.025, 6, 6]}/><meshStandardMaterial color="#000" emissive="#fca311" emissiveIntensity={1.5}/></mesh>
+      {/* Yellow procedural eyes */}
+      <EagleEye side={1} />
+      <EagleEye side={-1} />
       {/* Wings - Left Wing */}
       <group ref={wingL} position={[0.14, 0.1, 0.05]}>
         <mesh position={[0.35, 0, 0]} rotation={[0,-0.1,0.1]}><boxGeometry args={[0.7, 0.03, 0.45]}/><meshPhysicalMaterial {...feathersMat} side={THREE.DoubleSide}/></mesh>
@@ -646,8 +783,8 @@ function Underwater() {
 
   return (
     <group>
-      <ambientLight intensity={0.45} color="#0055aa"/>
-      <directionalLight position={[0,6,0]} intensity={1.8} color="#22ccff"/>
+      <ambientLight intensity={1.2} color="#0077dd"/>
+      <directionalLight position={[0,8,0]} intensity={4.5} color="#33ddff"/>
       <OceanFloor/>
       
       {/* Main creatures */}
@@ -717,8 +854,8 @@ function ForestScene() {
 
   return (
     <group>
-      <ambientLight intensity={0.3} color="#a0c0ff"/>
-      <directionalLight position={[5,8,3]} intensity={1.5} color="#fff6e0"/>
+      <ambientLight intensity={1.0} color="#b0d0ff"/>
+      <directionalLight position={[5,8,3]} intensity={3.5} color="#ffeed0"/>
 
       {/* Ground Meadow */}
       <mesh position={[0,-2.1,0]} rotation={[-Math.PI/2,0,0]}>
@@ -754,7 +891,7 @@ function ForestScene() {
         ))}
         {/* Fire Glow / Emitters */}
         <Particles type="fire" position={[0, 0.1, 0]} count={40} scale={0.7}/>
-        <pointLight position={[0, 0.3, 0]} intensity={4.5} color="#ff6600" distance={5} decay={2}/>
+        <pointLight position={[0, 0.3, 0]} intensity={12.0} color="#ff6600" distance={5} decay={2}/>
       </group>
 
       {/* Fireflies */}
@@ -849,9 +986,9 @@ function SpaceBattle() {
 
   return (
     <group>
-      <ambientLight intensity={0.15}/>
-      <pointLight position={[6,4,0]} intensity={4.5} color="#ff33aa" distance={15} decay={2}/>
-      <pointLight position={[-6,-4,0]} intensity={4.5} color="#33aaff" distance={15} decay={2}/>
+      <ambientLight intensity={0.9}/>
+      <pointLight position={[6,4,0]} intensity={14.0} color="#ff33aa" distance={15} decay={2}/>
+      <pointLight position={[-6,-4,0]} intensity={14.0} color="#33aaff" distance={15} decay={2}/>
 
       {/* Space Station / Base */}
       <group ref={stationRef} position={[0,0,-1]}>
@@ -1131,8 +1268,9 @@ export default function DynamicAnimatedScene({ scene = 'shark', label }) {
       </div>
       <Canvas camera={{ position: config.cam, fov: 50 }} shadows>
         <color attach="background" args={[config.env]} />
-        <ambientLight intensity={0.5} />
-        <directionalLight position={[5, 5, 5]} intensity={1} />
+        <ambientLight intensity={1.4} />
+        <directionalLight position={[5, 8, 5]} intensity={2.5} castShadow />
+        <directionalLight position={[-5, 5, -5]} intensity={1.2} />
         <Stars radius={100} depth={50} count={2000} factor={3} fade />
         {SceneRender()}
         <OrbitControls enableZoom maxDistance={25} minDistance={3} enableDamping dampingFactor={0.08} />

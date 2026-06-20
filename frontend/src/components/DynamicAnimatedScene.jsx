@@ -3,11 +3,11 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 
-// ── PARTICLE SYSTEMS ──────────────────────────────────────────────────────
-
+// ── ADVANCED COLOR-SHIFTING PARTICLE SYSTEM ──────────────────────────────
 function Particles({ type = 'fire', position = [0,0,0], count = 60, scale = 1 }) {
   const mesh = useRef();
   const dummy = useMemo(() => new THREE.Object3D(), []);
+  const cTemp = useMemo(() => new THREE.Color(), []);
 
   const configs = {
     fire:     { c1:'#FF4500', c2:'#FFD700', spread: 0.3*scale, rise: 2.3*scale, emit: 2.2 },
@@ -37,29 +37,51 @@ function Particles({ type = 'fire', position = [0,0,0], count = 60, scale = 1 })
     const t = clock.elapsedTime;
     particles.forEach((p, i) => {
       const life = ((t * p.speed * cfg.emit * 0.5 + p.offset) % 1);
-      const y = cfg.rise > 0 ? life * cfg.rise : (1-life) * Math.abs(cfg.rise);
+      const y = cfg.rise > 0 ? life * cfg.rise : (1 - life) * Math.abs(cfg.rise);
       dummy.position.set(
-        position[0] + p.sx * (1 + life),
+        position[0] + p.sx * (1 + life * 1.2),
         position[1] + y,
-        position[2] + p.sz * (1 + life)
+        position[2] + p.sz * (1 + life * 1.2)
       );
-      const s = p.size * (1 - life) * 1.5;
+      // Fade out size smoothly towards end of life
+      const s = p.size * (life < 0.1 ? life * 10 : (1 - life) * 1.2);
       dummy.scale.set(s,s,s);
       dummy.updateMatrix();
       mesh.current.setMatrixAt(i, dummy.matrix);
+
+      // Color transitions
+      if (type === 'fire') {
+        if (life < 0.18) {
+          cTemp.setHSL(0.55 + life * 0.2, 1.0, 0.85 - life * 0.5); // hot white-blue core
+        } else if (life < 0.5) {
+          const n = (life - 0.18) / 0.32;
+          cTemp.setHSL(0.08 + (1 - n) * 0.08, 1.0, 0.6); // yellow-orange
+        } else if (life < 0.8) {
+          const n = (life - 0.5) / 0.3;
+          cTemp.setHSL(0.01, 1.0, 0.45 * (1 - n)); // red
+        } else {
+          const n = (life - 0.8) / 0.2;
+          cTemp.setHSL(0.0, 0.0, 0.25 * (1 - n)); // smoke
+        }
+      } else {
+        // Linear fade to c2 configs
+        cTemp.set(cfg.c1).lerp(new THREE.Color(cfg.c2), life);
+      }
+      mesh.current.setColorAt(i, cTemp);
     });
     mesh.current.instanceMatrix.needsUpdate = true;
+    if (mesh.current.instanceColor) mesh.current.instanceColor.needsUpdate = true;
   });
 
   return (
     <instancedMesh ref={mesh} args={[null, null, count]}>
       <sphereGeometry args={[1, 5, 5]} />
-      <meshStandardMaterial color={cfg.c1} emissive={cfg.c2} emissiveIntensity={2.5} transparent opacity={0.8} />
+      <meshStandardMaterial transparent opacity={0.82} roughness={0.1} />
     </instancedMesh>
   );
 }
 
-// ── WAVE OCEAN ────────────────────────────────────────────────────────────
+// ── WAVE OCEAN FLOOR ──────────────────────────────────────────────────────
 function OceanFloor() {
   const mesh = useRef();
   useFrame(({ clock }) => {
@@ -77,7 +99,8 @@ function OceanFloor() {
   return (
     <mesh ref={mesh} position={[0, -2, 0]}>
       <planeGeometry args={[20, 20, 30, 30]} />
-      <meshStandardMaterial color="#005580" transparent opacity={0.7} roughness={0.3} metalness={0.1} />
+      {/* Physical water floor with transmission and gloss */}
+      <meshPhysicalMaterial color="#023b5c" roughness={0.25} metalness={0.1} transmission={0.5} thickness={1.2} transparent opacity={0.8} />
     </mesh>
   );
 }
@@ -94,7 +117,7 @@ function Shark({ position = [0,0,0], scale = 1 }) {
   useFrame(({ clock }) => {
     const t = clock.elapsedTime;
     if (ref.current) {
-      // S-shape path
+      // S-shape swimming path
       ref.current.position.x = position[0] + Math.sin(t * 0.6) * 2.5;
       ref.current.position.y = position[1] + Math.sin(t * 0.4) * 0.4;
       ref.current.position.z = position[2] + Math.cos(t * 0.5) * 1.8;
@@ -102,59 +125,66 @@ function Shark({ position = [0,0,0], scale = 1 }) {
       const dx = Math.cos(t * 0.6) * 0.6 * 2.5;
       const dz = -Math.sin(t * 0.5) * 0.5 * 1.8;
       ref.current.rotation.y = Math.atan2(dx, dz) + Math.PI;
-      ref.current.rotation.z = Math.sin(t * 1.2) * 0.08; // subtle roll
+      ref.current.rotation.z = Math.sin(t * 1.2) * 0.08;
     }
-    // Tail waving
+    // Caudal wave
     if (tailRef.current) tailRef.current.rotation.y = Math.sin(t * 3.5) * 0.35;
     if (tailFinRef.current) tailFinRef.current.rotation.y = Math.sin(t * 3.5 + 0.5) * 0.2;
-    // Pectoral fins breathing
+    // Pectorals breathing
     if (pectoralL.current) pectoralL.current.rotation.z = -0.4 + Math.sin(t * 2) * 0.1;
     if (pectoralR.current) pectoralR.current.rotation.z = 0.4 - Math.sin(t * 2) * 0.1;
   });
 
   const s = scale;
-  const skinMat = { color: "#4f6272", roughness: 0.5, metalness: 0.1 };
-  const bellyMat = { color: "#e6ecf0", roughness: 0.6 };
+  // Wet clearcoat shark skin
+  const skinMat = { color: "#384a59", roughness: 0.4, metalness: 0.1, clearcoat: 1.0, clearcoatRoughness: 0.15 };
+  const bellyMat = { color: "#e3e9ed", roughness: 0.5, clearcoat: 0.8 };
 
   return (
     <group ref={ref} scale={[s,s,s]}>
       {/* Torso */}
-      <mesh position={[0,0,0]}><capsuleGeometry args={[0.32,1.3,8,16]}/><meshStandardMaterial {...skinMat}/></mesh>
+      <mesh position={[0,0,0]}><capsuleGeometry args={[0.32,1.3,8,16]}/><meshPhysicalMaterial {...skinMat}/></mesh>
       {/* Underbelly (white) */}
-      <mesh position={[0,-0.08,0.1]} scale={[0.9,0.9,0.9]}><capsuleGeometry args={[0.26,1.1,6,12]}/><meshStandardMaterial {...bellyMat}/></mesh>
+      <mesh position={[0,-0.08,0.1]} scale={[0.9,0.9,0.9]}><capsuleGeometry args={[0.26,1.1,6,12]}/><meshPhysicalMaterial {...bellyMat}/></mesh>
       {/* Snout */}
-      <mesh position={[0,0,0.85]} rotation={[0.15,0,0]}><coneGeometry args={[0.26,0.6,8]}/><meshStandardMaterial {...skinMat}/></mesh>
-      {/* Eyes */}
-      <mesh position={[0.15,0.1,1.0]}><sphereGeometry args={[0.045,8,8]}/><meshStandardMaterial color="#000" roughness={0.1}/></mesh>
-      <mesh position={[-0.15,0.1,1.0]}><sphereGeometry args={[0.045,8,8]}/><meshStandardMaterial color="#000" roughness={0.1}/></mesh>
-      {/* Gills (slits) */}
+      <mesh position={[0,0,0.85]} rotation={[0.15,0,0]}><coneGeometry args={[0.26,0.6,8]}/><meshPhysicalMaterial {...skinMat}/></mesh>
+      
+      {/* Predator Eyes (glassy outer cornea) */}
+      {[0.15, -0.15].map((x, i) => (
+        <group key={i} position={[x, 0.1, 1.0]}>
+          <mesh><sphereGeometry args={[0.045, 12, 12]}/><meshPhysicalMaterial color="#ffffff" transmission={0.9} thickness={0.1} roughness={0.05}/></mesh>
+          <mesh position={[0.01 * Math.sign(x), 0, 0.015]}><sphereGeometry args={[0.025, 8, 8]}/><meshStandardMaterial color="#000" roughness={0.1}/></mesh>
+        </group>
+      ))}
+
+      {/* Gills */}
       {[0.4, 0.48, 0.56].map((z, i) => (
         <group key={i}>
-          <mesh position={[0.28, 0, z]} rotation={[0,0.1,0.2]}><boxGeometry args={[0.01,0.2,0.02]}/><meshStandardMaterial color="#333" roughness={0.9}/></mesh>
-          <mesh position={[-0.28, 0, z]} rotation={[0,-0.1,-0.2]}><boxGeometry args={[0.01,0.2,0.02]}/><meshStandardMaterial color="#333" roughness={0.9}/></mesh>
+          <mesh position={[0.28, 0, z]} rotation={[0,0.1,0.2]}><boxGeometry args={[0.01,0.2,0.02]}/><meshStandardMaterial color="#222" roughness={0.9}/></mesh>
+          <mesh position={[-0.28, 0, z]} rotation={[0,-0.1,-0.2]}><boxGeometry args={[0.01,0.2,0.02]}/><meshStandardMaterial color="#222" roughness={0.9}/></mesh>
         </group>
       ))}
       {/* Dorsal Fin */}
-      <mesh position={[0,0.45,-0.1]} rotation={[0.4,0,0]}><boxGeometry args={[0.06,0.5,0.32]}/><meshStandardMaterial {...skinMat}/></mesh>
+      <mesh position={[0,0.45,-0.1]} rotation={[0.4,0,0]}><boxGeometry args={[0.06,0.5,0.32]}/><meshPhysicalMaterial {...skinMat}/></mesh>
       {/* Pectoral Fin Left */}
       <group ref={pectoralL} position={[0.26,-0.1,0.4]} rotation={[0,-0.4,-0.4]}>
-        <mesh position={[0.25,0,0]}><boxGeometry args={[0.5,0.04,0.24]}/><meshStandardMaterial {...skinMat}/></mesh>
+        <mesh position={[0.25,0,0]}><boxGeometry args={[0.5,0.04,0.24]}/><meshPhysicalMaterial {...skinMat}/></mesh>
       </group>
       {/* Pectoral Fin Right */}
       <group ref={pectoralR} position={[-0.26,-0.1,0.4]} rotation={[0,0.4,0.4]}>
-        <mesh position={[-0.25,0,0]}><boxGeometry args={[0.5,0.04,0.24]}/><meshStandardMaterial {...skinMat}/></mesh>
+        <mesh position={[-0.25,0,0]}><boxGeometry args={[0.5,0.04,0.24]}/><meshPhysicalMaterial {...skinMat}/></mesh>
       </group>
       {/* Pelvic Fins */}
-      <mesh position={[0.15,-0.2,-0.4]} rotation={[0,-0.2,-0.2]}><boxGeometry args={[0.15,0.03,0.15]}/><meshStandardMaterial {...skinMat}/></mesh>
-      <mesh position={[-0.15,-0.2,-0.4]} rotation={[0,0.2,0.2]}><boxGeometry args={[0.15,0.03,0.15]}/><meshStandardMaterial {...skinMat}/></mesh>
+      <mesh position={[0.15,-0.2,-0.4]} rotation={[0,-0.2,-0.2]}><boxGeometry args={[0.15,0.03,0.15]}/><meshPhysicalMaterial {...skinMat}/></mesh>
+      <mesh position={[-0.15,-0.2,-0.4]} rotation={[0,0.2,0.2]}><boxGeometry args={[0.15,0.03,0.15]}/><meshPhysicalMaterial {...skinMat}/></mesh>
       {/* Tail structure */}
       <group ref={tailRef} position={[0,0,-0.75]}>
-        <mesh position={[0,0,-0.25]} rotation={[0,0,0]}><capsuleGeometry args={[0.18,0.5,6,12]}/><meshStandardMaterial {...skinMat}/></mesh>
+        <mesh position={[0,0,-0.25]} rotation={[0,0,0]}><capsuleGeometry args={[0.18,0.5,6,12]}/><meshPhysicalMaterial {...skinMat}/></mesh>
         <group ref={tailFinRef} position={[0,0,-0.5]}>
           {/* Upper Caudal Lobe */}
-          <mesh position={[0,0.38,-0.2]} rotation={[0.6,0,0]}><boxGeometry args={[0.04,0.7,0.22]}/><meshStandardMaterial {...skinMat}/></mesh>
+          <mesh position={[0,0.38,-0.2]} rotation={[0.6,0,0]}><boxGeometry args={[0.04,0.7,0.22]}/><meshPhysicalMaterial {...skinMat}/></mesh>
           {/* Lower Caudal Lobe */}
-          <mesh position={[0,-0.22,-0.1]} rotation={[-0.7,0,0]}><boxGeometry args={[0.04,0.45,0.18]}/><meshStandardMaterial {...skinMat}/></mesh>
+          <mesh position={[0,-0.22,-0.1]} rotation={[-0.7,0,0]}><boxGeometry args={[0.04,0.45,0.18]}/><meshPhysicalMaterial {...skinMat}/></mesh>
         </group>
       </group>
     </group>
@@ -183,44 +213,41 @@ function Butterfly({ position = [0,0,0], color = '#FF88CC', scale = 1 }) {
   });
 
   const s = scale;
-  const wingMat = { color: color, transparent: true, opacity: 0.85, side: THREE.DoubleSide, roughness: 0.2, metalness: 0.1 };
-  const patternMat = { color: "#222", transparent: true, opacity: 0.9, side: THREE.DoubleSide };
+  // Iridescent shimmery physical wings
+  const wingMat = { color: color, transparent: true, opacity: 0.85, side: THREE.DoubleSide, roughness: 0.1, metalness: 0.6, clearcoat: 1.0, clearcoatRoughness: 0.1 };
+  const patternMat = { color: "#111", transparent: true, opacity: 0.9, side: THREE.DoubleSide };
 
   return (
     <group ref={bodyRef} scale={[s,s,s]}>
       {/* Head */}
-      <mesh position={[0,0.06,0.32]}><sphereGeometry args={[0.08,10,10]}/><meshStandardMaterial color="#2d1c07"/></mesh>
+      <mesh position={[0,0.06,0.32]}><sphereGeometry args={[0.08,10,10]}/><meshPhysicalMaterial color="#2d1c07" roughness={0.8}/></mesh>
       {/* Thorax */}
-      <mesh position={[0,0,0.1]}><capsuleGeometry args={[0.07,0.22,8,8]}/><meshStandardMaterial color="#40280f"/></mesh>
+      <mesh position={[0,0,0.1]}><capsuleGeometry args={[0.07,0.22,8,8]}/><meshPhysicalMaterial color="#40280f" roughness={0.8}/></mesh>
       {/* Abdomen */}
-      <mesh position={[0,-0.04,-0.22]} rotation={[0.1,0,0]}><capsuleGeometry args={[0.05,0.4,6,8]}/><meshStandardMaterial color="#201002"/></mesh>
+      <mesh position={[0,-0.04,-0.22]} rotation={[0.1,0,0]}><capsuleGeometry args={[0.05,0.4,6,8]}/><meshPhysicalMaterial color="#201002" roughness={0.9}/></mesh>
       {/* Antennae */}
       <mesh position={[0.03,0.15,0.42]} rotation={[0.4,0.1,0.2]}><cylinderGeometry args={[0.006,0.006,0.3,6]}/><meshStandardMaterial color="#111"/></mesh>
       <mesh position={[-0.03,0.15,0.42]} rotation={[0.4,-0.1,-0.2]}><cylinderGeometry args={[0.006,0.006,0.3,6]}/><meshStandardMaterial color="#111"/></mesh>
       {/* Left Wing Group */}
       <group ref={wingLRef} position={[0.06,0.05,0.1]}>
-        {/* Forewing */}
         <group position={[0.3,0.2,0.2]} rotation={[-0.1,0,-0.2]}>
-          <mesh><boxGeometry args={[0.6,0.01,0.5]}/><meshStandardMaterial {...wingMat}/></mesh>
-          <mesh position={[0,0,0]} scale={[0.9,1.1,0.9]}><boxGeometry args={[0.55,0.012,0.45]}/><meshStandardMaterial {...patternMat}/></mesh>
+          <mesh><boxGeometry args={[0.6,0.01,0.5]}/><meshPhysicalMaterial {...wingMat}/></mesh>
+          <mesh position={[0,0,0]} scale={[0.9,1.1,0.9]}><boxGeometry args={[0.55,0.012,0.45]}/><meshPhysicalMaterial {...patternMat}/></mesh>
         </group>
-        {/* Hindwing */}
         <group position={[0.22,-0.15,-0.12]} rotation={[0.1,0,-0.4]}>
-          <mesh><boxGeometry args={[0.44,0.01,0.38]}/><meshStandardMaterial {...wingMat}/></mesh>
-          <mesh position={[0,0,0]} scale={[0.88,1.1,0.88]}><boxGeometry args={[0.4,0.012,0.34]}/><meshStandardMaterial {...patternMat}/></mesh>
+          <mesh><boxGeometry args={[0.44,0.01,0.38]}/><meshPhysicalMaterial {...wingMat}/></mesh>
+          <mesh position={[0,0,0]} scale={[0.88,1.1,0.88]}><boxGeometry args={[0.4,0.012,0.34]}/><meshPhysicalMaterial {...patternMat}/></mesh>
         </group>
       </group>
       {/* Right Wing Group */}
       <group ref={wingRRef} position={[-0.06,0.05,0.1]}>
-        {/* Forewing */}
         <group position={[-0.3,0.2,0.2]} rotation={[-0.1,0,0.2]}>
-          <mesh><boxGeometry args={[0.6,0.01,0.5]}/><meshStandardMaterial {...wingMat}/></mesh>
-          <mesh position={[0,0,0]} scale={[0.9,1.1,0.9]}><boxGeometry args={[0.55,0.012,0.45]}/><meshStandardMaterial {...patternMat}/></mesh>
+          <mesh><boxGeometry args={[0.6,0.01,0.5]}/><meshPhysicalMaterial {...wingMat}/></mesh>
+          <mesh position={[0,0,0]} scale={[0.9,1.1,0.9]}><boxGeometry args={[0.55,0.012,0.45]}/><meshPhysicalMaterial {...patternMat}/></mesh>
         </group>
-        {/* Hindwing */}
         <group position={[-0.22,-0.15,-0.12]} rotation={[0.1,0,0.4]}>
-          <mesh><boxGeometry args={[0.44,0.01,0.38]}/><meshStandardMaterial {...wingMat}/></mesh>
-          <mesh position={[0,0,0]} scale={[0.88,1.1,0.88]}><boxGeometry args={[0.4,0.012,0.34]}/><meshStandardMaterial {...patternMat}/></mesh>
+          <mesh><boxGeometry args={[0.44,0.01,0.38]}/><meshPhysicalMaterial {...wingMat}/></mesh>
+          <mesh position={[0,0,0]} scale={[0.88,1.1,0.88]}><boxGeometry args={[0.4,0.012,0.34]}/><meshPhysicalMaterial {...patternMat}/></mesh>
         </group>
       </group>
     </group>
@@ -243,30 +270,28 @@ function Volcano({ position = [0,0,0], scale = 1 }) {
       {/* Volcano Outer Base */}
       <mesh position={[0,-0.6,0]}>
         <cylinderGeometry args={[0.8, 2.8, 2.2, 16, 4]}/>
-        <meshStandardMaterial color="#362d26" roughness={0.9} />
+        <meshPhysicalMaterial color="#362d26" roughness={0.9} />
       </mesh>
       {/* Inner Ash Caldera */}
       <mesh position={[0,0.5,0]}>
         <cylinderGeometry args={[0.78, 0.84, 0.2, 12]}/>
-        <meshStandardMaterial color="#1f1a16" roughness={1.0}/>
+        <meshPhysicalMaterial color="#1f1a16" roughness={1.0}/>
       </mesh>
       {/* Glowing Crater Lava */}
       <mesh position={[0,0.51,0]} rotation={[-Math.PI/2, 0, 0]}>
         <circleGeometry args={[0.74, 16]}/>
-        <meshStandardMaterial color="#ff2200" emissive="#ff5500" emissiveIntensity={4}/>
+        <meshStandardMaterial color="#ff2200" emissive="#ff5500" emissiveIntensity={5} roughness={0.1}/>
       </mesh>
       
       {/* Flowing Lava Streams on Mountain Sides */}
       <group position={[0,0.5,0]}>
-        {/* Stream 1 */}
         <mesh ref={lavaFlow1} position={[0.65,-0.6,0.3]} rotation={[0.4, 0.4, -0.4]}>
           <cylinderGeometry args={[0.08, 0.12, 1.2, 6]}/>
-          <meshStandardMaterial color="#ff2200" emissive="#ff6600" emissiveIntensity={3.5}/>
+          <meshStandardMaterial color="#ff2200" emissive="#ff6600" emissiveIntensity={4}/>
         </mesh>
-        {/* Stream 2 */}
         <mesh ref={lavaFlow2} position={[-0.6,-0.6,-0.4]} rotation={[-0.4, -0.4, 0.4]}>
           <cylinderGeometry args={[0.07, 0.1, 1.2, 6]}/>
-          <meshStandardMaterial color="#ff2200" emissive="#ff6600" emissiveIntensity={3.5}/>
+          <meshStandardMaterial color="#ff2200" emissive="#ff6600" emissiveIntensity={4}/>
         </mesh>
       </group>
 
@@ -298,34 +323,34 @@ function Fish({ position = [0,0,0], color = '#FF8800', scale = 1 }) {
   });
 
   const s = scale;
-  const fishMat = { color: color, roughness: 0.3, metalness: 0.1 };
+  const fishMat = { color: color, roughness: 0.3, metalness: 0.1, clearcoat: 0.8 };
   const whiteMat = { color: '#ffffff' };
 
   return (
     <group ref={ref} scale={[s,s,s]}>
       {/* Body capsule */}
-      <mesh><capsuleGeometry args={[0.18, 0.5, 8, 12]}/><meshStandardMaterial {...fishMat}/></mesh>
-      {/* Stripes (Clownfish pattern) */}
+      <mesh><capsuleGeometry args={[0.18, 0.5, 8, 12]}/><meshPhysicalMaterial {...fishMat}/></mesh>
+      {/* Stripes */}
       {[0.1, -0.1].map((z, i) => (
         <group key={i} position={[0,0,z]}>
-          <mesh><torusGeometry args={[0.185, 0.02, 6, 16]}/><meshStandardMaterial {...whiteMat}/></mesh>
+          <mesh><torusGeometry args={[0.185, 0.02, 6, 16]}/><meshPhysicalMaterial {...whiteMat} clearcoat={0.5}/></mesh>
           <mesh position={[0,0,z > 0 ? 0.03 : -0.03]}><torusGeometry args={[0.187, 0.008, 6, 16]}/><meshStandardMaterial color="#000"/></mesh>
         </group>
       ))}
       {/* Tail fin */}
       <group ref={tailRef} position={[0, 0, -0.35]}>
-        <mesh position={[0, 0, -0.15]} rotation={[0,0,0.5]}><boxGeometry args={[0.02, 0.35, 0.3]}/><meshStandardMaterial {...fishMat}/></mesh>
-        <mesh position={[0, 0, -0.15]} rotation={[0,0,-0.5]}><boxGeometry args={[0.02, 0.35, 0.3]}/><meshStandardMaterial {...fishMat}/></mesh>
+        <mesh position={[0, 0, -0.15]} rotation={[0,0,0.5]}><boxGeometry args={[0.02, 0.35, 0.3]}/><meshPhysicalMaterial {...fishMat}/></mesh>
+        <mesh position={[0, 0, -0.15]} rotation={[0,0,-0.5]}><boxGeometry args={[0.02, 0.35, 0.3]}/><meshPhysicalMaterial {...fishMat}/></mesh>
       </group>
-      {/* Eyes */}
-      <mesh position={[0.12, 0.08, 0.22]}><sphereGeometry args={[0.035, 8, 8]}/><meshStandardMaterial color="#fff"/></mesh>
+      {/* Glassy Eyes */}
+      <mesh position={[0.12, 0.08, 0.22]}><sphereGeometry args={[0.035, 8, 8]}/><meshPhysicalMaterial color="#fff" clearcoat={1.0}/></mesh>
       <mesh position={[0.13, 0.08, 0.23]}><sphereGeometry args={[0.02, 6, 6]}/><meshStandardMaterial color="#000"/></mesh>
-      <mesh position={[-0.12, 0.08, 0.22]}><sphereGeometry args={[0.035, 8, 8]}/><meshStandardMaterial color="#fff"/></mesh>
+      <mesh position={[-0.12, 0.08, 0.22]}><sphereGeometry args={[0.035, 8, 8]}/><meshPhysicalMaterial color="#fff" clearcoat={1.0}/></mesh>
       <mesh position={[-0.13, 0.08, 0.23]}><sphereGeometry args={[0.02, 6, 6]}/><meshStandardMaterial color="#000"/></mesh>
       {/* Fins */}
-      <mesh position={[0, 0.22, -0.05]} rotation={[0.3, 0, 0]}><boxGeometry args={[0.02, 0.15, 0.22]}/><meshStandardMaterial {...fishMat}/></mesh>
-      <mesh position={[0.15, -0.08, 0.05]} rotation={[0.3, 0, -0.4]}><boxGeometry args={[0.12, 0.02, 0.15]}/><meshStandardMaterial {...fishMat}/></mesh>
-      <mesh position={[-0.15, -0.08, 0.05]} rotation={[0.3, 0, 0.4]}><boxGeometry args={[0.12, 0.02, 0.15]}/><meshStandardMaterial {...fishMat}/></mesh>
+      <mesh position={[0, 0.22, -0.05]} rotation={[0.3, 0, 0]}><boxGeometry args={[0.02, 0.15, 0.22]}/><meshPhysicalMaterial {...fishMat}/></mesh>
+      <mesh position={[0.15, -0.08, 0.05]} rotation={[0.3, 0, -0.4]}><boxGeometry args={[0.12, 0.02, 0.15]}/><meshPhysicalMaterial {...fishMat}/></mesh>
+      <mesh position={[-0.15, -0.08, 0.05]} rotation={[0.3, 0, 0.4]}><boxGeometry args={[0.12, 0.02, 0.15]}/><meshPhysicalMaterial {...fishMat}/></mesh>
     </group>
   );
 }
@@ -351,39 +376,36 @@ function Planet({ position = [0,0,0], color = '#4466FF', hasRings = false, hasAt
       <group scale={[s,s,s]}>
         {/* Planet Core */}
         <mesh ref={planetRef}>
-          <sphereGeometry args={[1, 32, 32]}/><meshStandardMaterial color={color} roughness={0.7} metalness={0.1}/>
+          <sphereGeometry args={[1, 32, 32]}/><meshPhysicalMaterial color={color} roughness={0.7} metalness={0.1} clearcoat={0.3}/>
         </mesh>
-        {/* Cloud Layer (if has atmosphere) */}
+        {/* Cloud Layer */}
         {hasAtmosphere && (
           <mesh ref={cloudsRef}>
             <sphereGeometry args={[1.04, 24, 24]}/>
-            <meshStandardMaterial color="#ffffff" transparent opacity={0.35} depthWrite={false}/>
+            <meshPhysicalMaterial color="#ffffff" transparent opacity={0.35} transmission={0.9} thickness={0.1} depthWrite={false}/>
           </mesh>
         )}
         {/* Atmosphere Glow */}
         {hasAtmosphere && (
           <mesh>
             <sphereGeometry args={[1.08, 24, 24]}/>
-            <meshStandardMaterial color={color} transparent opacity={0.15} side={THREE.BackSide}/>
+            <meshPhysicalMaterial color={color} transparent opacity={0.18} side={THREE.BackSide} transmission={0.9}/>
           </mesh>
         )}
-        {/* Rings (concentric) */}
+        {/* Rings */}
         {hasRings && (
           <group rotation={[Math.PI/3.2, 0, 0.1]}>
-            {/* Ring 1 */}
             <mesh>
               <torusGeometry args={[1.6, 0.12, 2, 64]}/>
-              <meshStandardMaterial color="#c2a078" transparent opacity={0.7} roughness={0.8}/>
+              <meshPhysicalMaterial color="#c2a078" transparent opacity={0.7} roughness={0.8} clearcoat={0.2}/>
             </mesh>
-            {/* Ring 2 */}
             <mesh>
               <torusGeometry args={[1.9, 0.08, 2, 64]}/>
-              <meshStandardMaterial color="#ab8a60" transparent opacity={0.5} roughness={0.8}/>
+              <meshPhysicalMaterial color="#ab8a60" transparent opacity={0.5} roughness={0.8} clearcoat={0.2}/>
             </mesh>
-            {/* Ring 3 */}
             <mesh>
               <torusGeometry args={[2.2, 0.05, 2, 64]}/>
-              <meshStandardMaterial color="#8a6b43" transparent opacity={0.3} roughness={0.8}/>
+              <meshPhysicalMaterial color="#8a6b43" transparent opacity={0.3} roughness={0.8} clearcoat={0.2}/>
             </mesh>
           </group>
         )}
@@ -418,44 +440,44 @@ function Eagle({ position = [0,0,0], color = '#614830', scale = 1 }) {
   });
 
   const s = scale;
-  const feathersMat = { color: color, roughness: 0.8 };
-  const whiteMat = { color: "#e6e6e6", roughness: 0.8 };
-  const beakMat = { color: "#fca311", roughness: 0.5 };
+  // Soft physical eagle feathers with velvet sheen
+  const feathersMat = { color: color, roughness: 0.8, sheen: 0.8, sheenColor: '#a18160' };
+  const whiteMat = { color: "#e6e6e6", roughness: 0.8, sheen: 0.5 };
+  const beakMat = { color: "#fca311", roughness: 0.4, clearcoat: 0.5 };
 
   return (
     <group ref={ref} scale={[s,s,s]}>
       {/* Body Torso */}
-      <mesh><capsuleGeometry args={[0.16, 0.6, 6, 12]}/><meshStandardMaterial {...feathersMat}/></mesh>
+      <mesh><capsuleGeometry args={[0.16, 0.6, 6, 12]}/><meshPhysicalMaterial {...feathersMat}/></mesh>
       {/* Head */}
-      <mesh position={[0,0.38,0.08]}><sphereGeometry args={[0.15,12,12]}/><meshStandardMaterial {...whiteMat}/></mesh>
+      <mesh position={[0,0.38,0.08]}><sphereGeometry args={[0.15,12,12]}/><meshPhysicalMaterial {...whiteMat}/></mesh>
       {/* Beak */}
       <group position={[0,0.38,0.22]} rotation={[0.3,0,0]}>
-        <mesh><coneGeometry args={[0.05, 0.15, 6]}/><meshStandardMaterial {...beakMat}/></mesh>
-        {/* Curved hook */}
-        <mesh position={[0,-0.06,0.02]} rotation={[0.5,0,0]}><coneGeometry args={[0.03, 0.08, 6]}/><meshStandardMaterial {...beakMat}/></mesh>
+        <mesh><coneGeometry args={[0.05, 0.15, 6]}/><meshPhysicalMaterial {...beakMat}/></mesh>
+        <mesh position={[0,-0.06,0.02]} rotation={[0.5,0,0]}><coneGeometry args={[0.03, 0.08, 6]}/><meshPhysicalMaterial {...beakMat}/></mesh>
       </group>
-      {/* Eyes */}
+      {/* Yellow glowing eyes */}
       <mesh position={[0.09, 0.42, 0.16]}><sphereGeometry args={[0.025, 6, 6]}/><meshStandardMaterial color="#000" emissive="#fca311" emissiveIntensity={1.5}/></mesh>
       <mesh position={[-0.09, 0.42, 0.16]}><sphereGeometry args={[0.025, 6, 6]}/><meshStandardMaterial color="#000" emissive="#fca311" emissiveIntensity={1.5}/></mesh>
       {/* Wings - Left Wing */}
       <group ref={wingL} position={[0.14, 0.1, 0.05]}>
-        <mesh position={[0.35, 0, 0]} rotation={[0,-0.1,0.1]}><boxGeometry args={[0.7, 0.03, 0.45]}/><meshStandardMaterial {...feathersMat} side={THREE.DoubleSide}/></mesh>
+        <mesh position={[0.35, 0, 0]} rotation={[0,-0.1,0.1]}><boxGeometry args={[0.7, 0.03, 0.45]}/><meshPhysicalMaterial {...feathersMat} side={THREE.DoubleSide}/></mesh>
         <group ref={wingL2} position={[0.7, 0, 0]}>
-          <mesh position={[0.25, 0, 0]} rotation={[0,-0.2,0.15]}><boxGeometry args={[0.5, 0.025, 0.35]}/><meshStandardMaterial {...feathersMat} side={THREE.DoubleSide}/></mesh>
+          <mesh position={[0.25, 0, 0]} rotation={[0,-0.2,0.15]}><boxGeometry args={[0.5, 0.025, 0.35]}/><meshPhysicalMaterial {...feathersMat} side={THREE.DoubleSide}/></mesh>
         </group>
       </group>
       {/* Wings - Right Wing */}
       <group ref={wingR} position={[-0.14, 0.1, 0.05]}>
-        <mesh position={[-0.35, 0, 0]} rotation={[0,0.1,-0.1]}><boxGeometry args={[0.7, 0.03, 0.45]}/><meshStandardMaterial {...feathersMat} side={THREE.DoubleSide}/></mesh>
+        <mesh position={[-0.35, 0, 0]} rotation={[0,0.1,-0.1]}><boxGeometry args={[0.7, 0.03, 0.45]}/><meshPhysicalMaterial {...feathersMat} side={THREE.DoubleSide}/></mesh>
         <group ref={wingR2} position={[-0.7, 0, 0]}>
-          <mesh position={[-0.25, 0, 0]} rotation={[0,0.2,-0.15]}><boxGeometry args={[0.5, 0.025, 0.35]}/><meshStandardMaterial {...feathersMat} side={THREE.DoubleSide}/></mesh>
+          <mesh position={[-0.25, 0, 0]} rotation={[0,0.2,-0.15]}><boxGeometry args={[0.5, 0.025, 0.35]}/><meshPhysicalMaterial {...feathersMat} side={THREE.DoubleSide}/></mesh>
         </group>
       </group>
       {/* Tail Feathers */}
       <group position={[0, -0.34, -0.15]} rotation={[-0.4, 0, 0]}>
         {[-0.08, 0, 0.08].map((x, i) => (
           <mesh key={i} position={[x, -0.15, 0]} rotation={[0, 0, x*2]}>
-            <boxGeometry args={[0.07, 0.35, 0.02]}/><meshStandardMaterial {...feathersMat}/>
+            <boxGeometry args={[0.07, 0.35, 0.02]}/><meshPhysicalMaterial {...feathersMat}/>
           </mesh>
         ))}
       </group>
@@ -498,20 +520,20 @@ function Comet({ position = [0,0,0], scale = 1 }) {
         {coreParts.map((pt, i) => (
           <mesh key={i} position={pt.pos}>
             <sphereGeometry args={[pt.s, 4, 4]}/>
-            <meshStandardMaterial color="#6a7d8c" roughness={0.9} metalness={0.2}/>
+            <meshPhysicalMaterial color="#6a7d8c" roughness={0.95} metalness={0.5} clearcoat={0.15}/>
           </mesh>
         ))}
       </group>
       {/* Glowing Coma */}
       <mesh>
         <sphereGeometry args={[0.35, 16, 16]}/>
-        <meshStandardMaterial color="#88ccff" emissive="#3366ff" emissiveIntensity={3} transparent opacity={0.4}/>
+        <meshPhysicalMaterial color="#88ccff" emissive="#3366ff" emissiveIntensity={3} transparent opacity={0.4} transmission={0.9}/>
       </mesh>
       <mesh ref={sparkGlow}>
         <sphereGeometry args={[0.5, 12, 12]}/>
-        <meshStandardMaterial color="#cce6ff" transparent opacity={0.18} depthWrite={false}/>
+        <meshPhysicalMaterial color="#cce6ff" transparent opacity={0.18} transmission={0.9} depthWrite={false}/>
       </mesh>
-      {/* Comet Tail (Particle Emitters pointing backwards relative to motion) */}
+      {/* Comet Tail */}
       <Particles type="sparkle" position={[-0.4, 0, 0]} count={60} scale={0.7}/>
       <Particles type="water" position={[-0.6, 0, 0]} count={40} scale={0.5}/>
       <pointLight intensity={3} color="#44aaff" distance={6} decay={2}/>
@@ -549,7 +571,7 @@ function SolarSystem() {
     <group>
       {/* Sun */}
       <mesh><sphereGeometry args={[1.2, 32, 32]}/><meshStandardMaterial color="#FFDD44" emissive="#FFAA00" emissiveIntensity={3.5}/></mesh>
-      <mesh ref={sunGlow}><sphereGeometry args={[1.35, 24, 24]}/><meshStandardMaterial color="#FF8800" transparent opacity={0.25} depthWrite={false}/></mesh>
+      <mesh ref={sunGlow}><sphereGeometry args={[1.35, 24, 24]}/><meshPhysicalMaterial color="#FF8800" transparent opacity={0.25} transmission={0.9} depthWrite={false}/></mesh>
       <pointLight intensity={6} color="#FFEEAA" distance={25} decay={2}/>
 
       {/* Planets */}
@@ -560,11 +582,11 @@ function SolarSystem() {
       <Planet position={[0,0,0]} orbitRadius={9.8} orbitSpeed={0.28} color="#b07f35" scale={0.78} hasRings hasAtmosphere/>
       <Planet position={[0,0,0]} orbitRadius={12.5} orbitSpeed={0.18} color="#3584a3" scale={0.54} hasRings/>
 
-      {/* Orbit Rings visual */}
+      {/* Orbit Rings */}
       {[2.3, 3.5, 4.8, 6.2, 9.8, 12.5].map((r, i) => (
         <mesh key={i} rotation={[Math.PI/2, 0, 0]}>
           <torusGeometry args={[r, 0.008, 2, 64]}/>
-          <meshStandardMaterial color="#ffffff" transparent opacity={0.08} depthWrite={false}/>
+          <meshPhysicalMaterial color="#ffffff" transparent opacity={0.08} depthWrite={false}/>
         </mesh>
       ))}
 
@@ -573,7 +595,7 @@ function SolarSystem() {
         {asteroids.map((ast, i) => (
           <mesh key={i} position={[ast.x, ast.y, ast.z]}>
             <sphereGeometry args={[ast.s, 4, 3]}/>
-            <meshStandardMaterial color="#6e5c4d" roughness={0.9}/>
+            <meshPhysicalMaterial color="#6e5c4d" roughness={0.95}/>
           </mesh>
         ))}
       </group>
@@ -602,7 +624,7 @@ function SeaweedStalk({ position = [0,-2,0], height = 1.8, segments = 5, color =
       <group ref={segRefs.current[idx]} position={[0, idx === 0 ? 0 : segLength, 0]}>
         <mesh position={[0, segLength/2, 0]}>
           <cylinderGeometry args={[0.02 + (segments-idx)*0.015, 0.04 + (segments-idx)*0.015, segLength, 6]}/>
-          <meshStandardMaterial color={color} roughness={0.8}/>
+          <meshPhysicalMaterial color={color} roughness={0.8} clearcoat={0.1}/>
         </mesh>
         {renderSegments(idx + 1)}
       </group>
@@ -636,7 +658,7 @@ function Underwater() {
       <Fish position={[-1.2, -0.5, 2.0]} color="#ffee33" scale={0.6}/>
       <Fish position={[2.5, 0.2, -2.8]} color="#9944ff" scale={0.5}/>
       
-      {/* Particles representing bubbles floating up */}
+      {/* Particles representing bubbles */}
       <Particles type="bubbles" position={[-1.5, -2, -1]} count={40} scale={0.9}/>
       <Particles type="bubbles" position={[1.8, -2, 1.5]} count={40} scale={0.9}/>
       
@@ -645,12 +667,12 @@ function Underwater() {
         <SeaweedStalk key={i} position={w.pos} height={w.h} segments={w.segs} color={w.col}/>
       ))}
 
-      {/* Decorative detailed Corals */}
+      {/* Decorative Corals */}
       {[[1.8,-2.1,-0.5, '#ff4466'], [-1.2,-2.1,1.0, '#ff9933'], [0.4,-2.1,-1.8, '#ff55cc'], [-2.5,-2.1,-0.5, '#ff4444']].map(([x,y,z,col], i) => (
         <group key={i} position={[x,y,z]}>
-          <mesh position={[0,0.2,0]}><coneGeometry args={[0.06,0.4,5]}/><meshStandardMaterial color={col}/></mesh>
-          <mesh position={[0.1,0.3,0.1]} rotation={[0.4,0,0.4]}><coneGeometry args={[0.04,0.3,5]}/><meshStandardMaterial color={col}/></mesh>
-          <mesh position={[-0.1,0.25,-0.1]} rotation={[-0.4,0,-0.4]}><coneGeometry args={[0.04,0.3,5]}/><meshStandardMaterial color={col}/></mesh>
+          <mesh position={[0,0.2,0]}><coneGeometry args={[0.06,0.4,5]}/><meshPhysicalMaterial color={col} roughness={0.8}/></mesh>
+          <mesh position={[0.1,0.3,0.1]} rotation={[0.4,0,0.4]}><coneGeometry args={[0.04,0.3,5]}/><meshPhysicalMaterial color={col} roughness={0.8}/></mesh>
+          <mesh position={[-0.1,0.25,-0.1]} rotation={[-0.4,0,-0.4]}><coneGeometry args={[0.04,0.3,5]}/><meshPhysicalMaterial color={col} roughness={0.8}/></mesh>
         </group>
       ))}
     </group>
@@ -701,36 +723,33 @@ function ForestScene() {
       {/* Ground Meadow */}
       <mesh position={[0,-2.1,0]} rotation={[-Math.PI/2,0,0]}>
         <planeGeometry args={[20,20]}/>
-        <meshStandardMaterial color="#326622" roughness={0.95}/>
+        <meshPhysicalMaterial color="#326622" roughness={0.95}/>
       </mesh>
 
       {/* Trees */}
       {trees.map((t, i) => (
         <group key={i} position={[t.x, -2.1, t.z]}>
-          {/* Trunk */}
           <mesh position={[0, t.h * 0.35, 0]}>
             <cylinderGeometry args={[0.08, 0.14, t.h * 0.7, 6]}/>
-            <meshStandardMaterial color="#4f331b" roughness={0.9}/>
+            <meshPhysicalMaterial color="#4f331b" roughness={0.9}/>
           </mesh>
-          {/* Foliage stacked cones */}
           <mesh position={[0, t.h * 0.9, 0]}>
             <coneGeometry args={[t.r, t.h * 0.9, 6]}/>
-            <meshStandardMaterial color={t.c} roughness={0.9}/>
+            <meshPhysicalMaterial color={t.c} roughness={0.9} sheen={0.3}/>
           </mesh>
           <mesh position={[0, t.h * 1.3, 0]}>
             <coneGeometry args={[t.r * 0.8, t.h * 0.7, 6]}/>
-            <meshStandardMaterial color={t.c} roughness={0.9}/>
+            <meshPhysicalMaterial color={t.c} roughness={0.9} sheen={0.3}/>
           </mesh>
         </group>
       ))}
 
       {/* Campfire (Cozy forest center) */}
       <group position={[0, -2.0, 0]}>
-        {/* Logs */}
         {[-0.2, 0, 0.2].map((x, i) => (
           <mesh key={i} position={[x, 0.05, (i%2===0?0.1:-0.1)]} rotation={[0, i*0.8, Math.PI/2]}>
             <cylinderGeometry args={[0.04, 0.04, 0.5, 6]}/>
-            <meshStandardMaterial color="#2b1c10" roughness={0.9}/>
+            <meshPhysicalMaterial color="#2b1c10" roughness={0.95}/>
           </mesh>
         ))}
         {/* Fire Glow / Emitters */}
@@ -738,12 +757,12 @@ function ForestScene() {
         <pointLight position={[0, 0.3, 0]} intensity={4.5} color="#ff6600" distance={5} decay={2}/>
       </group>
 
-      {/* Fireflies (glowing points) */}
+      {/* Fireflies */}
       {fireflies.map((ff, i) => (
         <group key={i} ref={fflyRefs.current[i]}>
           <mesh>
             <sphereGeometry args={[0.035, 6, 6]}/>
-            <meshStandardMaterial color="#ddff66" emissive="#bbff33" emissiveIntensity={3}/>
+            <meshPhysicalMaterial color="#ddff66" emissive="#bbff33" emissiveIntensity={3} transmission={0.9}/>
           </mesh>
           <pointLight intensity={1.2} color="#ccff55" distance={1.2}/>
         </group>
@@ -766,7 +785,6 @@ function SpaceFighter({ position = [0,0,0], team = 'red', scale = 1 }) {
   useFrame(({ clock }) => {
     const t = clock.elapsedTime;
     if (ref.current) {
-      // Orbit-like paths for space battle feel
       const angle = t * 0.4 * side + (side * Math.PI / 2);
       ref.current.position.set(
         position[0] + Math.cos(angle) * 3.5,
@@ -776,9 +794,8 @@ function SpaceFighter({ position = [0,0,0], team = 'red', scale = 1 }) {
       const tangentX = -Math.sin(angle) * 3.5 * side;
       const tangentZ = Math.cos(angle) * 2.5 * side;
       ref.current.rotation.y = Math.atan2(tangentX, tangentZ);
-      ref.current.rotation.z = Math.sin(t * 1.5) * 0.25 * side; // Banking
+      ref.current.rotation.z = Math.sin(t * 1.5) * 0.25 * side;
     }
-    // Shooting laser pulses
     if (laserRef.current) {
       const pulse = (t * 3.5) % 1.0;
       laserRef.current.position.z = 0.5 + pulse * 4.0;
@@ -793,23 +810,23 @@ function SpaceFighter({ position = [0,0,0], team = 'red', scale = 1 }) {
   return (
     <group ref={ref} scale={[scale, scale, scale]}>
       {/* Ship Hull */}
-      <mesh><boxGeometry args={[0.18, 0.08, 0.65]}/><meshStandardMaterial color={bodyCol} metalness={0.6} roughness={0.3}/></mesh>
+      <mesh><boxGeometry args={[0.18, 0.08, 0.65]}/><meshPhysicalMaterial color={bodyCol} metalness={0.8} roughness={0.2} clearcoat={0.6}/></mesh>
       {/* Cockpit Canopy */}
-      <mesh position={[0, 0.06, 0.12]}><boxGeometry args={[0.08, 0.06, 0.18]}/><meshStandardMaterial color="#88ccff" transparent opacity={0.6}/></mesh>
+      <mesh position={[0, 0.06, 0.12]}><boxGeometry args={[0.08, 0.06, 0.18]}/><meshPhysicalMaterial color="#88ccff" transparent opacity={0.6} transmission={0.9} thickness={0.1}/></mesh>
       {/* Left Wing */}
-      <mesh position={[0.2, -0.02, -0.05]} rotation={[0,0.1,-0.2]}><boxGeometry args={[0.3, 0.02, 0.28]}/><meshStandardMaterial color={bodyCol} metalness={0.5}/></mesh>
+      <mesh position={[0.2, -0.02, -0.05]} rotation={[0,0.1,-0.2]}><boxGeometry args={[0.3, 0.02, 0.28]}/><meshPhysicalMaterial color={bodyCol} metalness={0.8} roughness={0.2}/></mesh>
       {/* Right Wing */}
-      <mesh position={[-0.2, -0.02, -0.05]} rotation={[0,-0.1,0.2]}><boxGeometry args={[0.3, 0.02, 0.28]}/><meshStandardMaterial color={bodyCol} metalness={0.5}/></mesh>
+      <mesh position={[-0.2, -0.02, -0.05]} rotation={[0,-0.1,0.2]}><boxGeometry args={[0.3, 0.02, 0.28]}/><meshPhysicalMaterial color={bodyCol} metalness={0.8} roughness={0.2}/></mesh>
       {/* Tail Fin */}
-      <mesh position={[0, 0.08, -0.22]} rotation={[-0.2,0,0]}><boxGeometry args={[0.02, 0.16, 0.15]}/><meshStandardMaterial color={bodyCol}/></mesh>
+      <mesh position={[0, 0.08, -0.22]} rotation={[-0.2,0,0]}><boxGeometry args={[0.02, 0.16, 0.15]}/><meshPhysicalMaterial color={bodyCol}/></mesh>
       {/* Thruster exhaust flame */}
       <mesh position={[0,0,-0.36]} rotation={[Math.PI/2,0,0]}><coneGeometry args={[0.06, 0.22, 6]}/><meshStandardMaterial color="#ffa834" emissive="#ff6600" emissiveIntensity={3.5}/></mesh>
       
-      {/* Laser gun barrels */}
-      <mesh position={[0.08, -0.03, 0.28]} rotation={[Math.PI/2,0,0]}><cylinderGeometry args={[0.015, 0.015, 0.2, 5]}/><meshStandardMaterial color={detailCol} metalness={0.8}/></mesh>
-      <mesh position={[-0.08, -0.03, 0.28]} rotation={[Math.PI/2,0,0]}><cylinderGeometry args={[0.015, 0.015, 0.2, 5]}/><meshStandardMaterial color={detailCol} metalness={0.8}/></mesh>
+      {/* Laser barrels */}
+      <mesh position={[0.08, -0.03, 0.28]} rotation={[Math.PI/2,0,0]}><cylinderGeometry args={[0.015, 0.015, 0.2, 5]}/><meshPhysicalMaterial color={detailCol} metalness={0.9} roughness={0.1}/></mesh>
+      <mesh position={[-0.08, -0.03, 0.28]} rotation={[Math.PI/2,0,0]}><cylinderGeometry args={[0.015, 0.015, 0.2, 5]}/><meshPhysicalMaterial color={detailCol} metalness={0.9} roughness={0.1}/></mesh>
 
-      {/* Animated Laser beams shooting forward */}
+      {/* Laser beams */}
       <group ref={laserRef}>
         <mesh position={[0.08, -0.03, 0]} rotation={[Math.PI/2, 0, 0]}>
           <cylinderGeometry args={[0.008, 0.008, 0.6, 4]}/>
@@ -838,25 +855,22 @@ function SpaceBattle() {
 
       {/* Space Station / Base */}
       <group ref={stationRef} position={[0,0,-1]}>
-        {/* Core Cylinder */}
-        <mesh><cylinderGeometry args={[0.65, 0.65, 1.8, 16]}/><meshStandardMaterial color="#adbcc7" metalness={0.8} roughness={0.2}/></mesh>
-        {/* Solar Panels (large horizontal panels) */}
+        <mesh><cylinderGeometry args={[0.65, 0.65, 1.8, 16]}/><meshPhysicalMaterial color="#adbcc7" metalness={0.9} roughness={0.15} clearcoat={0.6}/></mesh>
+        {/* Solar Panels */}
         {[-0.6, 0, 0.6].map((y, i) => (
           <group key={i} position={[0, y, 0]}>
-            <mesh position={[1.4, 0, 0]}><boxGeometry args={[1.5, 0.02, 0.35]}/><meshStandardMaterial color="#0055bb" metalness={0.9} roughness={0.1}/></mesh>
-            <mesh position={[-1.4, 0, 0]}><boxGeometry args={[1.5, 0.02, 0.35]}/><meshStandardMaterial color="#0055bb" metalness={0.9} roughness={0.1}/></mesh>
-            <mesh rotation={[0,0,Math.PI/2]}><cylinderGeometry args={[0.04, 0.04, 3.2, 8]}/><meshStandardMaterial color="#555" metalness={0.9}/></mesh>
+            <mesh position={[1.4, 0, 0]}><boxGeometry args={[1.5, 0.02, 0.35]}/><meshPhysicalMaterial color="#0055bb" metalness={0.9} roughness={0.1}/></mesh>
+            <mesh position={[-1.4, 0, 0]}><boxGeometry args={[1.5, 0.02, 0.35]}/><meshPhysicalMaterial color="#0055bb" metalness={0.9} roughness={0.1}/></mesh>
+            <mesh rotation={[0,0,Math.PI/2]}><cylinderGeometry args={[0.04, 0.04, 3.2, 8]}/><meshPhysicalMaterial color="#555" metalness={0.9} roughness={0.1}/></mesh>
           </group>
         ))}
         {/* Docking ring */}
-        <mesh rotation={[Math.PI/2,0,0]}><torusGeometry args={[1.1, 0.07, 6, 24]}/><meshStandardMaterial color="#7a8c99" metalness={0.7}/></mesh>
+        <mesh rotation={[Math.PI/2,0,0]}><torusGeometry args={[1.1, 0.07, 6, 24]}/><meshPhysicalMaterial color="#7a8c99" metalness={0.8} roughness={0.2}/></mesh>
       </group>
 
-      {/* Space fighters dogfighting */}
       <SpaceFighter position={[0, 0.5, 0]} team="red" scale={1.0}/>
       <SpaceFighter position={[0.5, -0.5, -0.5]} team="blue" scale={0.95}/>
 
-      {/* Extra scene elements */}
       <Comet position={[-3, 2, -2]} scale={0.6}/>
       <Particles type="electric" position={[1.5,1,1.5]} count={40} scale={0.6}/>
       <Particles type="smoke" position={[-2,-1,-2]} count={30} scale={0.7}/>
@@ -875,67 +889,62 @@ function Snowstorm() {
       {/* Snow ground */}
       <mesh position={[0,-2.3,0]} rotation={[-Math.PI/2,0,0]}>
         <planeGeometry args={[20,20]}/>
-        <meshStandardMaterial color="#eaeff5" roughness={0.9}/>
+        <meshPhysicalMaterial color="#eaeff5" roughness={0.95}/>
       </mesh>
-      {/* Extra snow piles */}
+      {/* Extra snow drifts */}
       {[[-2,-2.25,1], [1.5,-2.25,-2.2], [-1.2,-2.25,-1.8], [2.2,-2.25,1.5]].map(([x,y,z], i) => (
         <mesh key={i} position={[x,y,z]}>
           <sphereGeometry args={[0.4 + i*0.1, 8, 8]}/>
-          <meshStandardMaterial color="#f0f5fa" roughness={0.9}/>
+          <meshPhysicalMaterial color="#f0f5fa" roughness={0.9}/>
         </mesh>
       ))}
 
-      {/* Heavy Snow particles falling */}
+      {/* Heavy Snow particles */}
       <Particles type="snow" position={[0,3,0]} count={180} scale={2.2}/>
 
-      {/* Snowman (Highly detailed) */}
+      {/* Snowman */}
       <group position={[-1.2,-2.1,-0.5]}>
-        {/* Body sections */}
-        <mesh position={[0,0.4,0]}><sphereGeometry args={[0.52,16,16]}/><meshStandardMaterial color="#ffffff" roughness={0.8}/></mesh>
-        <mesh position={[0,1.1,0]}><sphereGeometry args={[0.38,16,16]}/><meshStandardMaterial color="#ffffff" roughness={0.8}/></mesh>
-        <mesh position={[0,1.6,0]}><sphereGeometry args={[0.26,16,16]}/><meshStandardMaterial color="#ffffff" roughness={0.8}/></mesh>
-        {/* Buttons (coal) */}
+        <mesh position={[0,0.4,0]}><sphereGeometry args={[0.52,16,16]}/><meshPhysicalMaterial color="#ffffff" roughness={0.85}/></mesh>
+        <mesh position={[0,1.1,0]}><sphereGeometry args={[0.38,16,16]}/><meshPhysicalMaterial color="#ffffff" roughness={0.85}/></mesh>
+        <mesh position={[0,1.6,0]}><sphereGeometry args={[0.26,16,16]}/><meshPhysicalMaterial color="#ffffff" roughness={0.85}/></mesh>
+        {/* Buttons */}
         {[1.2, 1.0, 0.5, 0.35].map((y, i) => (
           <mesh key={i} position={[0, y, 0.24 + (1.6-y)*0.05]}><sphereGeometry args={[0.035,6,6]}/><meshStandardMaterial color="#222"/></mesh>
         ))}
         {/* Carrot nose */}
-        <mesh position={[0,1.6,0.24]} rotation={[0.2,0,0]}><coneGeometry args={[0.035,0.22,6]}/><meshStandardMaterial color="#ff7300" roughness={0.6}/></mesh>
+        <mesh position={[0,1.6,0.24]} rotation={[0.2,0,0]}><coneGeometry args={[0.035,0.22,6]}/><meshPhysicalMaterial color="#ff7300" roughness={0.6}/></mesh>
         {/* Coal Eyes */}
         <mesh position={[0.08,1.68,0.22]}><sphereGeometry args={[0.03,6,6]}/><meshStandardMaterial color="#222"/></mesh>
         <mesh position={[-0.08,1.68,0.22]}><sphereGeometry args={[0.03,6,6]}/><meshStandardMaterial color="#222"/></mesh>
         {/* Top Hat */}
         <group position={[0, 1.8, 0]} rotation={[0.05, 0, -0.05]}>
-          <mesh position={[0,0,0]}><cylinderGeometry args={[0.34, 0.34, 0.02, 12]}/><meshStandardMaterial color="#1f1f1f" metalness={0.5}/></mesh>
-          <mesh position={[0,0.2,0]}><cylinderGeometry args={[0.22, 0.22, 0.4, 12]}/><meshStandardMaterial color="#1f1f1f" metalness={0.5}/></mesh>
+          <mesh position={[0,0,0]}><cylinderGeometry args={[0.34, 0.34, 0.02, 12]}/><meshPhysicalMaterial color="#1f1f1f" metalness={0.5} roughness={0.5}/></mesh>
+          <mesh position={[0,0.2,0]}><cylinderGeometry args={[0.22, 0.22, 0.4, 12]}/><meshPhysicalMaterial color="#1f1f1f" metalness={0.5} roughness={0.5}/></mesh>
           <mesh position={[0,0.06,0]}><cylinderGeometry args={[0.23, 0.23, 0.04, 12]}/><meshStandardMaterial color="#cc1111"/></mesh>
         </group>
         {/* Twig Arms */}
-        <mesh position={[0.42, 1.1, 0]} rotation={[0, 0.2, -0.6]}><cylinderGeometry args={[0.018, 0.018, 0.7, 6]}/><meshStandardMaterial color="#4f331b" roughness={0.9}/></mesh>
-        <mesh position={[-0.42, 1.1, 0]} rotation={[0, -0.2, 0.6]}><cylinderGeometry args={[0.018, 0.018, 0.7, 6]}/><meshStandardMaterial color="#4f331b" roughness={0.9}/></mesh>
+        <mesh position={[0.42, 1.1, 0]} rotation={[0, 0.2, -0.6]}><cylinderGeometry args={[0.018, 0.018, 0.7, 6]}/><meshPhysicalMaterial color="#4f331b" roughness={0.95}/></mesh>
+        <mesh position={[-0.42, 1.1, 0]} rotation={[0, -0.2, 0.6]}><cylinderGeometry args={[0.018, 0.018, 0.7, 6]}/><meshPhysicalMaterial color="#4f331b" roughness={0.95}/></mesh>
       </group>
 
-      {/* Detailed cozy street lamp */}
+      {/* Cozy Street Lamp */}
       <group position={[1.5,-2.3,-0.5]}>
-        {/* Post */}
-        <mesh position={[0,1.6,0]}><cylinderGeometry args={[0.05,0.08,3.2,8]}/><meshStandardMaterial color="#1c2024" metalness={0.8} roughness={0.3}/></mesh>
-        {/* Head frame */}
-        <mesh position={[0,3.28,0]}><cylinderGeometry args={[0.16,0.1,0.2,6]}/><meshStandardMaterial color="#1c2024" metalness={0.8}/></mesh>
-        <mesh position={[0,3.42,0]}><coneGeometry args={[0.18,0.16,6]}/><meshStandardMaterial color="#1c2024" metalness={0.8}/></mesh>
-        {/* Glass panel enclosing bulb */}
-        <mesh position={[0,3.16,0]}><cylinderGeometry args={[0.1,0.14,0.3,6]}/><meshStandardMaterial color="#ffeaa7" transparent opacity={0.4}/></mesh>
-        {/* Glowing bulb */}
+        <mesh position={[0,1.6,0]}><cylinderGeometry args={[0.05,0.08,3.2,8]}/><meshPhysicalMaterial color="#1c2024" metalness={0.8} roughness={0.3}/></mesh>
+        <mesh position={[0,3.28,0]}><cylinderGeometry args={[0.16,0.1,0.2,6]}/><meshPhysicalMaterial color="#1c2024" metalness={0.8} roughness={0.3}/></mesh>
+        <mesh position={[0,3.42,0]}><coneGeometry args={[0.18,0.16,6]}/><meshPhysicalMaterial color="#1c2024" metalness={0.8} roughness={0.3}/></mesh>
+        <mesh position={[0,3.16,0]}><cylinderGeometry args={[0.1,0.14,0.3,6]}/><meshPhysicalMaterial color="#ffeaa7" transparent opacity={0.4} transmission={0.9} thickness={0.1}/></mesh>
         <mesh position={[0,3.16,0]}><sphereGeometry args={[0.06,8,8]}/><meshStandardMaterial color="#fff" emissive="#ffdd77" emissiveIntensity={3.5}/></mesh>
         <pointLight ref={streetLampRef} position={[0,3.0,0]} intensity={6.5} color="#ffdd77" distance={8} decay={2}/>
       </group>
 
-      {/* Snow Pine Trees */}
+      {/* Pine Trees */}
       {[[2.5,-2.2,-2.5, 1.5], [-2.5,-2.2,-2.8, 1.8]].map(([x,y,z,h], i) => (
         <group key={i} position={[x,y,z]}>
-          <mesh position={[0, h*0.25, 0]}><cylinderGeometry args={[0.07,0.11,h*0.5,6]}/><meshStandardMaterial color="#332015" roughness={0.95}/></mesh>
-          <mesh position={[0, h*0.65, 0]}><coneGeometry args={[0.6,h*0.6,6]}/><meshStandardMaterial color="#2d5236" roughness={0.9}/></mesh>
-          <mesh position={[0, h*0.65 + 0.05, 0]} scale={[1.05,1,1.05]}><coneGeometry args={[0.6,0.1,6]}/><meshStandardMaterial color="#eaeff5" roughness={0.9}/></mesh>
-          <mesh position={[0, h*1.0, 0]}><coneGeometry args={[0.45,h*0.5,6]}/><meshStandardMaterial color="#2d5236" roughness={0.9}/></mesh>
-          <mesh position={[0, h*1.0 + 0.04, 0]} scale={[1.05,1,1.05]}><coneGeometry args={[0.45,0.08,6]}/><meshStandardMaterial color="#eaeff5" roughness={0.9}/></mesh>
+          <mesh position={[0, h*0.25, 0]}><cylinderGeometry args={[0.07,0.11,h*0.5,6]}/><meshPhysicalMaterial color="#332015" roughness={0.95}/></mesh>
+          <mesh position={[0, h*0.65, 0]}><coneGeometry args={[0.6,h*0.6,6]}/><meshPhysicalMaterial color="#2d5236" roughness={0.9}/></mesh>
+          <mesh position={[0, h*0.65 + 0.05, 0]} scale={[1.05,1,1.05]}><coneGeometry args={[0.6,0.1,6]}/><meshPhysicalMaterial color="#eaeff5" roughness={0.9}/></mesh>
+          <mesh position={[0, h*1.0, 0]}><coneGeometry args={[0.45,h*0.5,6]}/><meshPhysicalMaterial color="#2d5236" roughness={0.9}/></mesh>
+          <mesh position={[0, h*1.0 + 0.04, 0]} scale={[1.05,1,1.05]}><coneGeometry args={[0.45,0.08,6]}/><meshPhysicalMaterial color="#eaeff5" roughness={0.9}/></mesh>
         </group>
       ))}
     </group>
@@ -955,52 +964,48 @@ function RainforestWaterfall() {
       {/* Ground Meadow */}
       <mesh position={[0,-2.3,0]} rotation={[-Math.PI/2,0,0]}>
         <planeGeometry args={[20,20]}/>
-        <meshStandardMaterial color="#1c4718" roughness={0.95}/>
+        <meshPhysicalMaterial color="#1c4718" roughness={0.95}/>
       </mesh>
 
       {/* Rocky Cliff */}
       <group position={[0, -0.2, -2.8]}>
-        {/* Main large cliff box */}
-        <mesh><boxGeometry args={[4.2, 4.2, 1.2]}/><meshStandardMaterial color="#3f3833" roughness={0.95}/></mesh>
-        {/* Moss/grass top layer */}
-        <mesh position={[0, 2.12, 0.1]}><boxGeometry args={[4.2, 0.06, 1.2]}/><meshStandardMaterial color="#226e1f" roughness={0.9}/></mesh>
-        {/* Rocky side ledges */}
-        <mesh position={[2.0, -0.4, 0.4]}><boxGeometry args={[0.8, 1.5, 0.8]}/><meshStandardMaterial color="#352f2b" roughness={0.95}/></mesh>
-        <mesh position={[-2.0, -0.2, 0.4]}><boxGeometry args={[0.8, 1.8, 0.8]}/><meshStandardMaterial color="#352f2b" roughness={0.95}/></mesh>
+        <mesh><boxGeometry args={[4.2, 4.2, 1.2]}/><meshPhysicalMaterial color="#3f3833" roughness={0.95}/></mesh>
+        {/* Moss top */}
+        <mesh position={[0, 2.12, 0.1]}><boxGeometry args={[4.2, 0.06, 1.2]}/><meshPhysicalMaterial color="#226e1f" roughness={0.9}/></mesh>
+        {/* Rocky ledges */}
+        <mesh position={[2.0, -0.4, 0.4]}><boxGeometry args={[0.8, 1.5, 0.8]}/><meshPhysicalMaterial color="#352f2b" roughness={0.95}/></mesh>
+        <mesh position={[-2.0, -0.2, 0.4]}><boxGeometry args={[0.8, 1.8, 0.8]}/><meshPhysicalMaterial color="#352f2b" roughness={0.95}/></mesh>
       </group>
 
       {/* Waterfall stream */}
       <group position={[0, 0, -2.15]}>
-        {/* Waterfall falling body */}
         <mesh>
           <planeGeometry args={[1.5, 3.8]}/>
-          <meshStandardMaterial color="#47a0ff" emissive="#114fa8" emissiveIntensity={1.5} transparent opacity={0.7} side={THREE.DoubleSide}/>
+          <meshPhysicalMaterial color="#47a0ff" emissive="#114fa8" emissiveIntensity={1.5} transparent opacity={0.7} side={THREE.DoubleSide} transmission={0.5} thickness={0.5}/>
         </mesh>
-        {/* Flowing animated highlights */}
         <mesh ref={waterFlowRef} position={[0, 0, 0.01]}>
           <planeGeometry args={[1.4, 1.0]}/>
-          <meshStandardMaterial color="#ffffff" transparent opacity={0.3} side={THREE.DoubleSide}/>
+          <meshPhysicalMaterial color="#ffffff" transparent opacity={0.3} side={THREE.DoubleSide}/>
         </mesh>
       </group>
 
-      {/* Waterfall Splash Base pool */}
+      {/* Waterfall Pool */}
       <mesh position={[0, -2.1, -1.8]}>
         <cylinderGeometry args={[1.2, 1.2, 0.12, 20]}/>
-        <meshStandardMaterial color="#0e3d7a" transparent opacity={0.8} roughness={0.1}/>
+        <meshPhysicalMaterial color="#0e3d7a" transparent opacity={0.8} roughness={0.1} transmission={0.6}/>
       </mesh>
 
-      {/* Splash Mist Particle Emitters */}
+      {/* Splash Mist */}
       <Particles type="water" position={[0, -1.9, -1.8]} count={100} scale={1.0}/>
       <Particles type="bubbles" position={[0, -1.9, -1.6]} count={40} scale={0.7}/>
       
-      {/* Rainforest Trees around */}
+      {/* Rainforest Trees */}
       {[[2.5,-2.2,-1.5, 2.2], [-2.5,-2.2,-1.5, 1.8], [3.2,-2.2,1.2, 2.0], [-2.8,-2.2,1.5, 1.7]].map(([x,y,z,h], i) => (
         <group key={i} position={[x,y,z]}>
-          <mesh position={[0, h*0.35, 0]}><cylinderGeometry args={[0.07,0.12,h*0.7,6]}/><meshStandardMaterial color="#402a1d" roughness={0.9}/></mesh>
-          {/* Dense leafy top (spheres stacked) */}
-          <mesh position={[0, h, 0]}><sphereGeometry args={[0.6,12,12]}/><meshStandardMaterial color="#1a6e2e" roughness={0.85}/></mesh>
-          <mesh position={[0.2, h*1.3, -0.1]}><sphereGeometry args={[0.45,10,10]}/><meshStandardMaterial color="#125923" roughness={0.85}/></mesh>
-          <mesh position={[-0.2, h*1.2, 0.1]}><sphereGeometry args={[0.45,10,10]}/><meshStandardMaterial color="#125923" roughness={0.85}/></mesh>
+          <mesh position={[0, h*0.35, 0]}><cylinderGeometry args={[0.07,0.12,h*0.7,6]}/><meshPhysicalMaterial color="#402a1d" roughness={0.95}/></mesh>
+          <mesh position={[0, h, 0]}><sphereGeometry args={[0.6,12,12]}/><meshPhysicalMaterial color="#1a6e2e" roughness={0.85}/></mesh>
+          <mesh position={[0.2, h*1.3, -0.1]}><sphereGeometry args={[0.45,10,10]}/><meshPhysicalMaterial color="#125923" roughness={0.85}/></mesh>
+          <mesh position={[-0.2, h*1.2, 0.1]}><sphereGeometry args={[0.45,10,10]}/><meshPhysicalMaterial color="#125923" roughness={0.85}/></mesh>
         </group>
       ))}
 
@@ -1016,7 +1021,7 @@ function RainforestWaterfall() {
 
 const DYNAMIC_SCENES = {
   shark:        { render: () => <><Shark position={[0,0,0]} scale={1.5}/><OceanFloor/><Particles type="bubbles" position={[0,-1,0]} count={40}/></>,         env:'#001a33', cam:[0,0,10], label:'🦈 Shark Swimming'      },
-  butterfly:    { render: () => <><Butterfly position={[0,0,0]} color="#FF88CC" scale={1.2}/><Butterfly position={[2,0.3,-1]} color="#88FFCC" scale={0.9}/><Butterfly position={[-1.5,0.5,1]} color="#FFFF88" scale={0.8}/></>,                                   env:'#0f2015', cam:[0,0,8], label:'🦋 Butterflies'          },
+  butterfly:    { render: () => <><Butterfly position={[0,0,0]} color="#FF88CC" scale={1.2}/><Butterfly position={[2,0.3,-1]} color="#88FFCC" scale={0.9}/><Butterfly position={[-1.5,0.5,1]} color="#FFFF88" scale={0.8}/></>,                                   env:'#09170f', cam:[0,0,8], label:'🦋 Butterflies'          },
   eagle:        { render: () => <><Eagle position={[0,0,0]} scale={1.5}/><Stars radius={50} depth={20} count={1000} factor={2} fade/></>,                   env:'#87CEEB', cam:[0,0,9], label:'🦅 Soaring Eagle'        },
   fish:         { render: () => <Underwater/>,                                                                                                              env:'#001a33', cam:[0,0,10], label:'🐠 Underwater World'     },
   underwater:   { render: () => <Underwater/>,                                                                                                              env:'#001a33', cam:[0,0,10], label:'🌊 Underwater World'     },
@@ -1024,18 +1029,17 @@ const DYNAMIC_SCENES = {
   solarsystem:  { render: () => <SolarSystem/>,                                                                                                             env:'#000005', cam:[0,5,18], label:'🪐 Solar System'         },
   solar:        { render: () => <SolarSystem/>,                                                                                                             env:'#000005', cam:[0,5,18], label:'🪐 Solar System'         },
   comet:        { render: () => <><Comet position={[0,0,0]} scale={1.2}/><Stars radius={100} depth={50} count={3000} factor={4} fade/></>,                  env:'#000010', cam:[0,0,10], label:'☄️ Comet'               },
-  forest:       { render: () => <ForestScene/>,                                                                                                             env:'#0a1f0a', cam:[0,2,12], label:'🌲 Forest'               },
+  forest:       { render: () => <ForestScene/>,                                                                                                             env:'#051705', cam:[0,2,12], label:'🌲 Forest'               },
   spaceship:    { render: () => <SpaceBattle/>,                                                                                                             env:'#000005', cam:[0,0,12], label:'🚀 Space Scene'          },
   space:        { render: () => <SpaceBattle/>,                                                                                                             env:'#000005', cam:[0,0,12], label:'🚀 Space Scene'          },
-  snow:         { render: () => <Snowstorm/>,                                                                                                               env:'#0b1526', cam:[0,0,10], label:'❄️ Snowstorm'            },
-  snowman:      { render: () => <Snowstorm/>,                                                                                                               env:'#0b1526', cam:[0,0,10], label:'⛄ Snow Scene'           },
-  waterfall:    { render: () => <RainforestWaterfall/>,                                                                                                     env:'#0f2015', cam:[0,1,12], label:'💦 Rainforest Waterfall' },
-  rainforest:   { render: () => <RainforestWaterfall/>,                                                                                                     env:'#0f2015', cam:[0,1,12], label:'🌴 Rainforest'           },
+  snow:         { render: () => <Snowstorm/>,                                                                                                               env:'#08101f', cam:[0,0,10], label:'❄️ Snowstorm'            },
+  snowman:      { render: () => <Snowstorm/>,                                                                                                               env:'#08101f', cam:[0,0,10], label:'⛄ Snow Scene'           },
+  waterfall:    { render: () => <RainforestWaterfall/>,                                                                                                     env:'#09170f', cam:[0,1,12], label:'💦 Rainforest Waterfall' },
+  rainforest:   { render: () => <RainforestWaterfall/>,                                                                                                     env:'#09170f', cam:[0,1,12], label:'🌴 Rainforest'           },
   planet:       { render: () => <><Planet position={[0,0,0]} color="#2244FF" scale={1.5} hasAtmosphere hasRings/><Comet position={[2,1,-1]} scale={0.5}/><Stars radius={100} depth={50} count={3000} factor={4} fade/></>,   env:'#000008', cam:[0,2,9], label:'🪐 Planet'  },
 };
 
 // ── SMART KEYWORD MAPPER ─────────────────────────────────────────────────
-// Maps ANY word the user might say to the closest scene
 const KEYWORD_MAP = {
   // Ocean / Water creatures
   shark:'shark', whale:'underwater', dolphin:'underwater', octopus:'underwater',
@@ -1070,7 +1074,7 @@ const KEYWORD_MAP = {
   snow:'snow', snowman:'snowman', blizzard:'snow', ice:'snow',
   winter:'snow', frost:'snow', tundra:'snow', arctic:'snow',
   // Forest / Nature
-  forest:'forest', jungle:'rainforest', rainforest:'rainforest',
+  forest:'forest', rainforest:'rainforest',
   tree:'forest', woods:'forest', nature:'forest', meadow:'forest',
   mountain:'volcano', hill:'forest', valley:'forest', cliff:'volcano',
   cave:'volcano', canyon:'volcano',
@@ -1092,13 +1096,10 @@ const KEYWORD_MAP = {
 function resolveScene(input) {
   const key = input.toLowerCase().replace(/[^a-z]/g, '');
   if (DYNAMIC_SCENES[key]) return key;
-  // Try keyword map
   if (KEYWORD_MAP[key]) return KEYWORD_MAP[key];
-  // Try partial match
   for (const [word, scene] of Object.entries(KEYWORD_MAP)) {
     if (key.includes(word) || word.includes(key)) return scene;
   }
-  // Default fallback
   return 'shark';
 }
 
@@ -1137,5 +1138,27 @@ export default function DynamicAnimatedScene({ scene = 'shark', label }) {
         <OrbitControls enableZoom maxDistance={25} minDistance={3} enableDamping dampingFactor={0.08} />
       </Canvas>
     </div>
+  );
+}
+
+function VolcanoIsland() {
+  return (
+    <group>
+      <mesh position={[0,-2.5,0]} rotation={[-Math.PI/2,0,0]}>
+        <circleGeometry args={[7,32]}/>
+        <meshPhysicalMaterial color="#001830" roughness={0.3} metalness={0.2}/>
+      </mesh>
+      <mesh position={[0,-2,0]}>
+        <cylinderGeometry args={[3.2,3.8,0.8,20]}/>
+        <meshPhysicalMaterial color="#cfa076" roughness={0.8}/>
+      </mesh>
+      <mesh position={[0,-1.6,0]}>
+        <cylinderGeometry args={[2.5,3.0,0.8,16]}/>
+        <meshPhysicalMaterial color="#423930" roughness={0.95}/>
+      </mesh>
+      <Volcano position={[0,-1.2,0]} scale={1.2}/>
+      <Particles type="lava" position={[1.8,-1.5,0.5]} count={30} scale={0.6}/>
+      <Particles type="lava" position={[-1.5,-1.5,-1.2]} count={30} scale={0.6}/>
+    </group>
   );
 }

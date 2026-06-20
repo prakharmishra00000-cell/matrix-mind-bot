@@ -21,12 +21,17 @@ function AIImageRenderer({ prompt }) {
   const cleanPrompt = prompt.replace(/[\[\]{}()<>|\\^`]/g, '').trim().substring(0, 500);
   const encoded = encodeURIComponent(cleanPrompt);
   
-  // Multiple URL strategies to try
+  // Backend URL (same origin, no CORS issues)
+  const backendBase = window.location.hostname === 'localhost'
+    ? 'http://localhost:5000'
+    : 'https://matrix-mind-bot.onrender.com';
+
+  // Multiple URL strategies: backend proxy first (most reliable), then direct fallbacks
   const urls = [
+    `${backendBase}/api/generate-image?prompt=${encoded}&width=1024&height=1024`,
     `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true`,
     `https://image.pollinations.ai/prompt/${encoded}?width=768&height=768&nologo=true&model=flux`,
-    `https://gen.pollinations.ai/image/${encoded}?width=1024&height=1024&nologo=true`,
-    `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt.split(',').slice(0, 5).join(','))}?width=1024&height=1024&nologo=true`,
+    `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt.split(',').slice(0,5).join(','))}?width=1024&height=1024&nologo=true`,
   ];
   
   const currentUrl = urls[attempt % urls.length];

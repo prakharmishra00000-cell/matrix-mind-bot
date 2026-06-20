@@ -980,26 +980,64 @@ function Dashboard({
     const topLevelElements = [];
 
     // Scan for [3D_ANIMATED: scene=...] anywhere in text
-    const animatedRegex = /\[3D_ANIMATED:\s*scene\s*=\s*([^\],]+)\]/gi;
+    const animatedRegex = /\[3D_ANIMATED:\s*scene\s*=\s*([^\],\]\n]+)(?:,\s*label\s*=\s*([^\],\]\n]+))?\]/gi;
     let animMatch;
     while ((animMatch = animatedRegex.exec(text)) !== null) {
       const scene = animMatch[1].trim();
+      const label = animMatch[2] ? animMatch[2].trim() : null;
       topLevelElements.push(
         <React.Suspense key={`anim-${animMatch.index}`} fallback={<div style={{padding:'20px',color:'#00f2fe',textAlign:'center',background:'rgba(0,0,0,0.15)',borderRadius:'12px',border:'1px solid rgba(0,242,254,0.1)',fontSize:'0.85rem',margin:'15px 0'}}>🎬 Loading 3D Scene...</div>}>
-          <AnimatedScene3D scene={scene} />
+          <AnimatedScene3D scene={scene} label={label} />
         </React.Suspense>
       );
     }
 
     // Scan for [3D_DYNAMIC: scene=...] anywhere in text
-    const dynamicRegex = /\[3D_DYNAMIC:\s*scene\s*=\s*([^\],]+)\]/gi;
+    const dynamicRegex = /\[3D_DYNAMIC:\s*scene\s*=\s*([^\],\]\n]+)(?:,\s*label\s*=\s*([^\],\]\n]+))?\]/gi;
     let dynMatch;
     while ((dynMatch = dynamicRegex.exec(text)) !== null) {
       const scene = dynMatch[1].trim();
+      const label = dynMatch[2] ? dynMatch[2].trim() : null;
       topLevelElements.push(
         <React.Suspense key={`dyn-${dynMatch.index}`} fallback={<div style={{padding:'20px',color:'#00f2fe',textAlign:'center',background:'rgba(0,0,0,0.15)',borderRadius:'12px',border:'1px solid rgba(0,242,254,0.1)',fontSize:'0.85rem',margin:'15px 0'}}>🎬 Loading 3D Scene...</div>}>
-          <DynamicAnimatedScene scene={scene} />
+          <DynamicAnimatedScene scene={scene} label={label} />
         </React.Suspense>
+      );
+    }
+
+    // Scan for [3D_SHAPE_RENDER: ...] anywhere in text
+    const shapeRegex = /\[3D_SHAPE_RENDER:\s*([^\]]+)\]/gi;
+    let shapeMatch;
+    while ((shapeMatch = shapeRegex.exec(text)) !== null) {
+      const tokenContent = shapeMatch[1];
+      const shapeParam = tokenContent.match(/shape\s*=\s*([^,;\]\n]+)/);
+      const colorParam = tokenContent.match(/color\s*=\s*([^,;\]\n]+)/);
+      const materialParam = tokenContent.match(/material\s*=\s*([^,;\]\n]+)/);
+      const compositeParam = tokenContent.match(/composite\s*=\s*([^;\]\n]+)/);
+      const textParam = tokenContent.match(/text\s*=\s*([^;\]\n]+)/);
+
+      const shape = shapeParam ? shapeParam[1].trim() : null;
+      const color = colorParam ? colorParam[1].trim() : null;
+      const material = materialParam ? materialParam[1].trim() : null;
+      const composite = compositeParam ? compositeParam[1].trim() : null;
+      const label = textParam ? textParam[1].trim() : (composite ? "Custom 3D Object" : `${color || ''} ${material || ''} ${shape || 'Shape'}`);
+
+      topLevelElements.push(
+        <React.Suspense key={`shape-${shapeMatch.index}`} fallback={<div style={{ padding: '15px', color: 'var(--accent-cyan)', textAlign: 'center', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', fontSize: '0.85rem' }}>Loading 3D Visualizer...</div>}>
+          <Interactive3DObject shape={shape} color={color} material={material} composite={composite} label={label} />
+        </React.Suspense>
+      );
+    }
+
+    // Scan for [AI_IMAGE: ...] anywhere in text
+    const aiImageRegex = /\[AI_IMAGE:\s*([^\]]+)\]/gi;
+    let imgMatch;
+    while ((imgMatch = aiImageRegex.exec(text)) !== null) {
+      const tokenContent = imgMatch[1];
+      const promptParam = tokenContent.match(/prompt\s*=\s*([^\]\n]+)/);
+      const imagePrompt = promptParam ? promptParam[1].trim() : 'abstract colorful digital art 3D rendered';
+      topLevelElements.push(
+        <AIImageRenderer key={`image-${imgMatch.index}`} prompt={imagePrompt} />
       );
     }
 
@@ -1007,8 +1045,12 @@ function Dashboard({
     const stripTokens = (s) => s
       .replace(/\[3D_ANIMATED:[^\]]*\]/gi, '')
       .replace(/\[3D_DYNAMIC:[^\]]*\]/gi, '')
+      .replace(/\[3D_SHAPE_RENDER:[^\]]*\]/gi, '')
+      .replace(/\[AI_IMAGE:[^\]]*\]/gi, '')
       .replace(/`\[3D_ANIMATED:[^\]]*\]`/gi, '')
-      .replace(/`\[3D_DYNAMIC:[^\]]*\]`/gi, '');
+      .replace(/`\[3D_DYNAMIC:[^\]]*\]`/gi, '')
+      .replace(/`\[3D_SHAPE_RENDER:[^\]]*\]`/gi, '')
+      .replace(/`\[AI_IMAGE:[^\]]*\]`/gi, '');
 
     const cleanedParts = parts.map(p =>
       p.type === 'text' ? { ...p, content: stripTokens(p.content) } : p
@@ -1046,81 +1088,8 @@ function Dashboard({
       return (
         <div key={i} className="markdown-render">
           {part.content.split('\n').map((line, lineIdx) => {
-            // 3D Shape Renderer (handles primitive shape token or composite scenes DSL)
-            if (line.includes('[3D_SHAPE_RENDER:')) {
-              const startIdx = line.indexOf('[3D_SHAPE_RENDER:');
-              const endIdx = line.indexOf(']', startIdx);
-              if (endIdx !== -1) {
-                const tokenContent = line.substring(startIdx + 17, endIdx);
-                
-                const shapeParam = tokenContent.match(/shape\s*=\s*([^,;\]]+)/);
-                const colorParam = tokenContent.match(/color\s*=\s*([^,;\]]+)/);
-                const materialParam = tokenContent.match(/material\s*=\s*([^,;\]]+)/);
-                const compositeParam = tokenContent.match(/composite\s*=\s*([^;\]]+)/);
-                const textParam = tokenContent.match(/text\s*=\s*([^;\]]+)/);
-
-                const shape = shapeParam ? shapeParam[1].trim() : null;
-                const color = colorParam ? colorParam[1].trim() : null;
-                const material = materialParam ? materialParam[1].trim() : null;
-                const composite = compositeParam ? compositeParam[1].trim() : null;
-                const label = textParam ? textParam[1].trim() : (composite ? "Custom 3D Object" : `${color || ''} ${material || ''} ${shape || 'Shape'}`);
-
-                return (
-                  <React.Suspense key={lineIdx} fallback={<div style={{ padding: '15px', color: 'var(--accent-cyan)', textAlign: 'center', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', fontSize: '0.85rem' }}>Loading 3D Visualizer...</div>}>
-                    <Interactive3DObject shape={shape} color={color} material={material} composite={composite} label={label} />
-                  </React.Suspense>
-                );
-              }
-            }
-
-            // AI Image Generator (renders AI-generated images from Pollinations.ai)
-            if (line.includes('[AI_IMAGE:')) {
-              const startIdx = line.indexOf('[AI_IMAGE:');
-              const endIdx = line.indexOf(']', startIdx);
-              if (endIdx !== -1) {
-                const tokenContent = line.substring(startIdx + 10, endIdx);
-                const promptParam = tokenContent.match(/prompt\s*=\s*(.+)/);
-                const imagePrompt = promptParam ? promptParam[1].trim() : 'abstract colorful digital art 3D rendered';
-                
-                return <AIImageRenderer key={lineIdx} prompt={imagePrompt} />;
-              }
-            }
-
-            // 3D Animated Scene renderer
-            if (line.includes('[3D_ANIMATED:')) {
-              const startIdx = line.indexOf('[3D_ANIMATED:');
-              const endIdx = line.indexOf(']', startIdx);
-              if (endIdx !== -1) {
-                const tokenContent = line.substring(startIdx + 13, endIdx);
-                const sceneParam = tokenContent.match(/scene\s*=\s*([^,;\]]+)/);
-                const labelParam = tokenContent.match(/label\s*=\s*([^;\]]+)/);
-                const scene = sceneParam ? sceneParam[1].trim() : 'dragon';
-                const label = labelParam ? labelParam[1].trim() : null;
-                return (
-                  <React.Suspense key={lineIdx} fallback={<div style={{padding:'15px',color:'#00f2fe',textAlign:'center',background:'rgba(0,0,0,0.2)',borderRadius:'8px',border:'1px solid rgba(255,255,255,0.05)',fontSize:'0.85rem'}}>Loading 3D Scene...</div>}>
-                    <AnimatedScene3D scene={scene} label={label} />
-                  </React.Suspense>
-                );
-              }
-            }
-
-            // 3D Dynamic Scene renderer (any live animated scene)
-            if (line.includes('[3D_DYNAMIC:')) {
-              const startIdx = line.indexOf('[3D_DYNAMIC:');
-              const endIdx = line.indexOf(']', startIdx);
-              if (endIdx !== -1) {
-                const tokenContent = line.substring(startIdx + 12, endIdx);
-                const sceneParam = tokenContent.match(/scene\s*=\s*([^,;\]]+)/);
-                const labelParam = tokenContent.match(/label\s*=\s*([^;\]]+)/);
-                const scene = sceneParam ? sceneParam[1].trim() : 'shark';
-                const label = labelParam ? labelParam[1].trim() : null;
-                return (
-                  <React.Suspense key={lineIdx} fallback={<div style={{padding:'20px',color:'#00f2fe',textAlign:'center',background:'rgba(0,0,0,0.2)',borderRadius:'12px',border:'1px solid rgba(0,242,254,0.1)',fontSize:'0.85rem',margin:'15px 0'}}>🎬 Loading 3D Scene...</div>}>
-                    <DynamicAnimatedScene scene={scene} label={label} />
-                  </React.Suspense>
-                );
-              }
-            }
+            // Tokens are parsed at top level to prevent text formatting loss
+            if (!line.trim()) return null;
 
             // Check headers
             if (line.startsWith('### ')) {

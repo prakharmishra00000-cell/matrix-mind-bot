@@ -654,166 +654,52 @@ function Admin({ onBack, email }) {
               </div>
 
               <div className="glass-panel" style={{ padding: '20px', marginBottom: '20px', borderRadius: '16px' }}>
-                <h4 style={{ margin: '0 0 15px 0', fontSize: '1rem', color: 'var(--accent-cyan)' }}>Manage Feature Types</h4>
+                <h4 style={{ margin: '0 0 10px 0', fontSize: '1rem', color: 'var(--accent-cyan)' }}>Manage Feature Types</h4>
+                <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '15px' }}>Trackable features with daily limits. Use -1 for unlimited, 0 to disable.</p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '15px' }}>
                   {Object.keys(editingFeatureNames).map(key => (
-                    <div key={key} style={{ background: 'rgba(0,0,0,0.3)', padding: '5px 10px', borderRadius: '6px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontWeight: 600, color: '#94a3b8' }}>{key}</span>
-                      <input 
-                        type="text" 
-                        value={editingFeatureNames[key]}
-                        onChange={(e) => {
-                          const updated = { ...editingFeatureNames };
-                          updated[key] = e.target.value;
-                          setEditingFeatureNames(updated);
-                        }}
-                        style={{ background: 'none', border: '1px solid var(--border-glass)', padding: '2px 5px', color: '#fff', fontSize: '0.8rem', borderRadius: '4px' }}
-                      />
+                    <div key={key} style={{ background: 'rgba(0,242,254,0.05)', border: '1px solid rgba(0,242,254,0.15)', padding: '6px 12px', borderRadius: '8px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontWeight: 700, color: '#00f2fe', fontSize: '0.7rem', textTransform: 'uppercase' }}>{key}</span>
+                      <input type="text" value={editingFeatureNames[key]} onChange={(e) => { const u = { ...editingFeatureNames }; u[key] = e.target.value; setEditingFeatureNames(u); }} style={{ background: 'none', border: '1px solid var(--border-glass)', padding: '2px 6px', color: '#fff', fontSize: '0.8rem', borderRadius: '4px', width: '140px' }} />
+                      <button type="button" title="Delete from all plans" onClick={() => { if (!window.confirm('Delete feature "' + editingFeatureNames[key] + '" (' + key + ') from ALL plans?')) return; const un = { ...editingFeatureNames }; delete un[key]; setEditingFeatureNames(un); const up = { ...editingPlans }; Object.keys(up).forEach(pid => { if (up[pid].featureLimits) delete up[pid].featureLimits[key]; }); setEditingPlans(up); }} style={{ background: 'none', border: 'none', color: '#ff5555', cursor: 'pointer', padding: '0 2px' }}><Trash2 size={13} /></button>
                     </div>
                   ))}
                 </div>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                  <input 
-                    type="text" 
-                    placeholder="Feature Key (e.g. autocoder)" 
-                    id="newFeatureKeyInput"
-                    style={{ background: 'rgba(0,0,0,0.3)', padding: '8px 12px', width: '200px' }}
-                  />
-                  <input 
-                    type="text" 
-                    placeholder="Display Name (e.g. Auto Coder)" 
-                    id="newFeatureNameInput"
-                    style={{ background: 'rgba(0,0,0,0.3)', padding: '8px 12px', width: '200px' }}
-                  />
-                  <button 
-                    className="btn"
-                    onClick={() => {
-                      const keyInput = document.getElementById('newFeatureKeyInput').value.trim();
-                      const nameInput = document.getElementById('newFeatureNameInput').value.trim();
-                      if (keyInput && nameInput && !editingFeatureNames[keyInput]) {
-                        setEditingFeatureNames({ ...editingFeatureNames, [keyInput]: nameInput });
-                        // Also initialize the limit to 0 in all plans so it shows up in the editor
-                        const updatedPlans = { ...editingPlans };
-                        Object.keys(updatedPlans).forEach(planId => {
-                          if (!updatedPlans[planId].featureLimits) updatedPlans[planId].featureLimits = {};
-                          updatedPlans[planId].featureLimits[keyInput] = 0;
-                        });
-                        setEditingPlans(updatedPlans);
-                        document.getElementById('newFeatureKeyInput').value = '';
-                        document.getElementById('newFeatureNameInput').value = '';
-                      }
-                    }}
-                    style={{ padding: '8px 15px', fontSize: '0.8rem' }}
-                  >
-                    Add New Feature
-                  </button>
+                <div style={{ background: 'rgba(0,0,0,0.2)', padding: '15px', borderRadius: '12px', border: '1px dashed rgba(0,242,254,0.2)' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--accent-cyan)', display: 'block', marginBottom: '10px' }}>Add New Trackable Feature</span>
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input type="text" placeholder="Feature Key (e.g. autocoder)" id="newFeatureKeyInput" style={{ background: 'rgba(0,0,0,0.3)', padding: '8px 12px', width: '180px', borderRadius: '8px', border: '1px solid var(--border-glass)', color: '#fff', fontSize: '0.8rem' }} />
+                    <input type="text" placeholder="Display Name (e.g. Auto Coder)" id="newFeatureNameInput" style={{ background: 'rgba(0,0,0,0.3)', padding: '8px 12px', width: '200px', borderRadius: '8px', border: '1px solid var(--border-glass)', color: '#fff', fontSize: '0.8rem' }} />
+                    <input type="number" placeholder="Default limit (0)" id="newFeatureDefaultLimit" style={{ background: 'rgba(0,0,0,0.3)', padding: '8px 12px', width: '120px', borderRadius: '8px', border: '1px solid var(--border-glass)', color: '#fff', fontSize: '0.8rem' }} />
+                    <button className="btn" onClick={() => { const k = document.getElementById('newFeatureKeyInput').value.trim(); const n = document.getElementById('newFeatureNameInput').value.trim(); const dl = parseInt(document.getElementById('newFeatureDefaultLimit').value) || 0; if (!k || !n) { alert('Both Key and Name required.'); return; } if (editingFeatureNames[k]) { alert('Key "' + k + '" exists.'); return; } setEditingFeatureNames({ ...editingFeatureNames, [k]: n }); const up = { ...editingPlans }; Object.keys(up).forEach(pid => { if (!up[pid].featureLimits) up[pid].featureLimits = {}; up[pid].featureLimits[k] = dl; if (!up[pid].features) up[pid].features = []; const lt = dl === -1 ? 'Unlimited' : dl === 0 ? 'Disabled' : dl + '/day'; up[pid].features.push(n + ' (' + lt + ')'); }); setEditingPlans(up); document.getElementById('newFeatureKeyInput').value = ''; document.getElementById('newFeatureNameInput').value = ''; document.getElementById('newFeatureDefaultLimit').value = ''; }} style={{ padding: '8px 15px', fontSize: '0.8rem' }}><Plus size={14} /> Add Feature</button>
+                  </div>
+                  <p style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '8px', marginBottom: 0 }}>Use -1 for unlimited. Auto-added to all plans feature lists.</p>
                 </div>
               </div>
 
-              <div className="plans-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '20px' }}>
+              <div className="plans-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '20px' }}>
                 {Object.keys(editingPlans).map((planId) => {
                   const plan = editingPlans[planId];
                   return (
                     <div key={planId} className="plan-card glass-panel" style={{ padding: '25px', display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
-                      <h4 style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '1.1rem', color: 'var(--accent-cyan)', marginBottom: '15px', textTransform: 'uppercase', textAlign: 'center' }}>
-                        {plan.name} configuration
-                      </h4>
-                      
-                      <div className="form-group" style={{ marginBottom: '15px' }}>
-                        <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Plan Name</label>
-                        <input 
-                          type="text" 
-                          value={plan.name || ''} 
-                          onChange={(e) => {
-                            const updated = { ...editingPlans };
-                            updated[planId].name = e.target.value;
-                            setEditingPlans(updated);
-                          }}
-                          style={{ background: 'rgba(0,0,0,0.3)', padding: '8px 12px' }}
-                        />
-                      </div>
-
-                      <div className="form-group" style={{ marginBottom: '15px' }}>
-                        <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Plan Price (₹)</label>
-                        <input 
-                          type="number" 
-                          value={plan.price} 
-                          onChange={(e) => {
-                            const updated = { ...editingPlans };
-                            updated[planId].price = parseInt(e.target.value) || 0;
-                            setEditingPlans(updated);
-                          }}
-                          disabled={planId === 'free'}
-                          style={{ background: 'rgba(0,0,0,0.3)', padding: '8px 12px' }}
-                        />
-                      </div>
-
-                      <div className="form-group" style={{ marginBottom: '15px' }}>
-                        <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Daily Prompts limit</label>
-                        <input 
-                          type="number" 
-                          value={plan.prompts} 
-                          onChange={(e) => {
-                            const updated = { ...editingPlans };
-                            updated[planId].prompts = parseInt(e.target.value) || 0;
-                            setEditingPlans(updated);
-                          }}
-                          style={{ background: 'rgba(0,0,0,0.3)', padding: '8px 12px' }}
-                        />
-                      </div>
-
-                      <div className="form-group" style={{ marginBottom: '15px' }}>
-                        <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Billing Duration Description</label>
-                        <input 
-                          type="text" 
-                          value={plan.duration || ''} 
-                          onChange={(e) => {
-                            const updated = { ...editingPlans };
-                            updated[planId].duration = e.target.value;
-                            setEditingPlans(updated);
-                          }}
-                          disabled={planId === 'free'}
-                          placeholder="e.g. 1 Month, 1 Year"
-                          style={{ background: 'rgba(0,0,0,0.3)', padding: '8px 12px' }}
-                        />
-                      </div>
-
-                      {planId !== 'free' && (
-                        <div className="form-group" style={{ marginBottom: '15px' }}>
-                          <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Days Duration</label>
-                          <input 
-                            type="number" 
-                            value={plan.days || 30} 
-                            onChange={(e) => {
-                              const updated = { ...editingPlans };
-                              updated[planId].days = parseInt(e.target.value) || 30;
-                              setEditingPlans(updated);
-                            }}
-                            style={{ background: 'rgba(0,0,0,0.3)', padding: '8px 12px' }}
-                          />
-                        </div>
-                      )}
+                      <h4 style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '1.1rem', color: 'var(--accent-cyan)', marginBottom: '15px', textTransform: 'uppercase', textAlign: 'center' }}>{plan.name} configuration</h4>
+                      <div className="form-group" style={{ marginBottom: '12px' }}><label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Plan Name</label><input type="text" value={plan.name || ''} onChange={(e) => { const u = { ...editingPlans }; u[planId].name = e.target.value; setEditingPlans(u); }} style={{ background: 'rgba(0,0,0,0.3)', padding: '8px 12px' }} /></div>
+                      <div className="form-group" style={{ marginBottom: '12px' }}><label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Plan Price (₹)</label><input type="number" value={plan.price} onChange={(e) => { const u = { ...editingPlans }; u[planId].price = parseInt(e.target.value) || 0; setEditingPlans(u); }} disabled={planId === 'free'} style={{ background: 'rgba(0,0,0,0.3)', padding: '8px 12px' }} /></div>
+                      <div className="form-group" style={{ marginBottom: '12px' }}><label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Daily Prompts limit</label><input type="number" value={plan.prompts} onChange={(e) => { const u = { ...editingPlans }; u[planId].prompts = parseInt(e.target.value) || 0; setEditingPlans(u); }} style={{ background: 'rgba(0,0,0,0.3)', padding: '8px 12px' }} /></div>
+                      <div className="form-group" style={{ marginBottom: '12px' }}><label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Billing Duration</label><input type="text" value={plan.duration || ''} onChange={(e) => { const u = { ...editingPlans }; u[planId].duration = e.target.value; setEditingPlans(u); }} disabled={planId === 'free'} placeholder="e.g. 1 Month" style={{ background: 'rgba(0,0,0,0.3)', padding: '8px 12px' }} /></div>
+                      {planId !== 'free' && (<div className="form-group" style={{ marginBottom: '12px' }}><label style={{ fontSize: '0.75rem', fontWeight: 600 }}>Days Duration</label><input type="number" value={plan.days || 30} onChange={(e) => { const u = { ...editingPlans }; u[planId].days = parseInt(e.target.value) || 30; setEditingPlans(u); }} style={{ background: 'rgba(0,0,0,0.3)', padding: '8px 12px' }} /></div>)}
 
                       <div style={{ borderTop: '1px solid var(--border-glass)', marginTop: '10px', paddingTop: '15px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--accent-cyan)' }}>Feature Limits (per day, -1 for unlimited)</span>
-                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}><span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--accent-cyan)' }}>Feature Limits</span><span style={{ fontSize: '0.6rem', color: '#64748b' }}>-1=∞ 0=Off</span></div>
                         {plan.featureLimits && Object.keys(editingFeatureNames).map((key) => {
-                          const fName = editingFeatureNames[key];
+                          const val = plan.featureLimits[key] !== undefined ? plan.featureLimits[key] : 0;
                           return (
                             <div key={key} className="form-group" style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <label style={{ fontSize: '0.75rem', fontWeight: 600, maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={fName}>{fName}</label>
-                              <input 
-                                type="number" 
-                                value={plan.featureLimits[key] !== undefined ? plan.featureLimits[key] : 0}
-                                onChange={(e) => {
-                                  const updated = { ...editingPlans };
-                                  if (!updated[planId].featureLimits) updated[planId].featureLimits = {};
-                                  updated[planId].featureLimits[key] = parseInt(e.target.value) || 0;
-                                  setEditingPlans(updated);
-                                }}
-                                style={{ background: 'rgba(0,0,0,0.3)', padding: '4px 8px', width: '80px', textAlign: 'center' }}
-                              />
+                              <label style={{ fontSize: '0.75rem', fontWeight: 600, maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={editingFeatureNames[key]}>{editingFeatureNames[key]}</label>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <input type="number" value={val} onChange={(e) => { const u = { ...editingPlans }; if (!u[planId].featureLimits) u[planId].featureLimits = {}; u[planId].featureLimits[key] = parseInt(e.target.value) || 0; setEditingPlans(u); }} style={{ background: 'rgba(0,0,0,0.3)', padding: '4px 8px', width: '70px', textAlign: 'center' }} />
+                                <span style={{ fontSize: '0.6rem', color: Number(val) === -1 ? '#22c55e' : Number(val) === 0 ? '#ef4444' : '#00f2fe', fontWeight: 700, minWidth: '50px' }}>{Number(val) === -1 ? '∞ Unlim' : Number(val) === 0 ? '✗ Off' : val + '/day'}</span>
+                              </div>
                             </div>
                           );
                         })}
@@ -822,49 +708,27 @@ function Admin({ onBack, email }) {
                       <div style={{ borderTop: '1px solid var(--border-glass)', marginTop: '10px', paddingTop: '15px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                           <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Features List</span>
-                          <button 
-                            type="button"
-                            onClick={() => setShowFeaturePrompt(planId)} 
-                            style={{ background: 'none', border: 'none', color: 'var(--accent-cyan)', cursor: 'pointer' }}
-                          >
-                            <Plus size={16} />
-                          </button>
+                          <button type="button" onClick={() => setShowFeaturePrompt(showFeaturePrompt === planId ? null : planId)} style={{ background: 'none', border: 'none', color: 'var(--accent-cyan)', cursor: 'pointer' }}><Plus size={16} /></button>
                         </div>
-
                         {showFeaturePrompt === planId && (
                           <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-                            <input 
-                              type="text" 
-                              placeholder="Enter feature prompt text" 
-                              value={newFeatureInput}
-                              onChange={(e) => setNewFeatureInput(e.target.value)}
-                              style={{ padding: '6px', fontSize: '0.75rem', flex: 1, background: 'rgba(0,0,0,0.4)' }}
-                            />
-                            <button 
-                              type="button" 
-                              className="btn" 
-                              onClick={() => handleAddFeatureText(planId)} 
-                              style={{ padding: '6px 10px', fontSize: '0.75rem' }}
-                            >
-                              Apply
-                            </button>
+                            <input type="text" placeholder="e.g. Knowledge Graph Visualization" value={newFeatureInput} onChange={(e) => setNewFeatureInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAddFeatureText(planId); }} style={{ padding: '6px 10px', fontSize: '0.75rem', flex: 1, background: 'rgba(0,0,0,0.4)', borderRadius: '6px', border: '1px solid var(--border-glass)', color: '#fff' }} />
+                            <button type="button" className="btn" onClick={() => handleAddFeatureText(planId)} style={{ padding: '6px 10px', fontSize: '0.75rem' }}>Add</button>
                           </div>
                         )}
-
-                        <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '5px', maxHeight: '300px', overflowY: 'auto' }}>
                           {plan.features?.map((f, idx) => (
-                            <li key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80%' }}>• {f}</span>
-                              <button 
-                                type="button" 
-                                onClick={() => handleRemoveFeatureText(planId, idx)} 
-                                style={{ background: 'none', border: 'none', color: '#ff5555', cursor: 'pointer' }}
-                              >
-                                <Trash2 size={12} />
-                              </button>
+                            <li key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.73rem', color: 'var(--text-muted)', padding: '3px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }} title={f}>✓ {f}</span>
+                              <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
+                                {idx > 0 && <button type="button" onClick={() => { const u = { ...editingPlans }; const feats = [...u[planId].features]; [feats[idx-1], feats[idx]] = [feats[idx], feats[idx-1]]; u[planId].features = feats; setEditingPlans(u); }} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '0 2px', fontSize: '0.65rem' }} title="Move up">▲</button>}
+                                {idx < (plan.features?.length || 0) - 1 && <button type="button" onClick={() => { const u = { ...editingPlans }; const feats = [...u[planId].features]; [feats[idx], feats[idx+1]] = [feats[idx+1], feats[idx]]; u[planId].features = feats; setEditingPlans(u); }} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '0 2px', fontSize: '0.65rem' }} title="Move down">▼</button>}
+                                <button type="button" onClick={() => handleRemoveFeatureText(planId, idx)} style={{ background: 'none', border: 'none', color: '#ff5555', cursor: 'pointer', padding: '0 2px' }} title="Remove"><Trash2 size={12} /></button>
+                              </div>
                             </li>
                           ))}
                         </ul>
+                        <p style={{ fontSize: '0.6rem', color: '#475569', marginTop: '6px', marginBottom: 0 }}>{plan.features?.length || 0} features • Shown on Upgrade page</p>
                       </div>
                     </div>
                   );

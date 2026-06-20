@@ -12,13 +12,24 @@ import WorkflowPanel from './WorkflowPanel';
 const MindMap3D = React.lazy(() => import('./MindMap3D'));
 const Interactive3DObject = React.lazy(() => import('./Interactive3DObject'));
 
-// AI Image Renderer with loading state and retry
+// AI Image Renderer with loading state and retry across multiple providers
 function AIImageRenderer({ prompt }) {
   const [status, setStatus] = useState('loading'); // loading | loaded | error
-  const [retryCount, setRetryCount] = useState(0);
-  const cleanPrompt = prompt.replace(/[^\w\s,.\-!?']/g, ' ').trim();
-  const encodedPrompt = encodeURIComponent(cleanPrompt);
-  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${retryCount}`;
+  const [attempt, setAttempt] = useState(0);
+  
+  // Clean prompt: keep only safe URL chars
+  const cleanPrompt = prompt.replace(/[\[\]{}()<>|\\^`]/g, '').trim().substring(0, 500);
+  const encoded = encodeURIComponent(cleanPrompt);
+  
+  // Multiple URL strategies to try
+  const urls = [
+    `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true`,
+    `https://image.pollinations.ai/prompt/${encoded}?width=768&height=768&nologo=true&model=flux`,
+    `https://gen.pollinations.ai/image/${encoded}?width=1024&height=1024&nologo=true`,
+    `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt.split(',').slice(0, 5).join(','))}?width=1024&height=1024&nologo=true`,
+  ];
+  
+  const currentUrl = urls[attempt % urls.length];
 
   return (
     <div style={{ margin: '15px 0', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(0,242,254,0.15)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', position: 'relative', background: 'rgba(6,6,18,0.8)' }}>
@@ -27,7 +38,7 @@ function AIImageRenderer({ prompt }) {
       </div>
       {status === 'loaded' && (
         <div style={{ position: 'absolute', top: '12px', right: '12px', zIndex: 10 }}>
-          <a href={imageUrl} target="_blank" rel="noopener noreferrer" style={{ background: 'rgba(0,0,0,0.7)', padding: '5px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', fontSize: '0.75rem', color: '#00f2fe', textDecoration: 'none', fontFamily: 'Inter, sans-serif', backdropFilter: 'blur(8px)' }}>
+          <a href={currentUrl} target="_blank" rel="noopener noreferrer" style={{ background: 'rgba(0,0,0,0.7)', padding: '5px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', fontSize: '0.75rem', color: '#00f2fe', textDecoration: 'none', fontFamily: 'Inter, sans-serif', backdropFilter: 'blur(8px)' }}>
             ⬇ Download HD
           </a>
         </div>
@@ -37,19 +48,18 @@ function AIImageRenderer({ prompt }) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '400px', flexDirection: 'column', gap: '15px' }}>
           <div style={{ width: '50px', height: '50px', border: '3px solid rgba(0,242,254,0.2)', borderTop: '3px solid #00f2fe', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
           <span style={{ color: '#00f2fe', fontSize: '0.9rem', fontFamily: 'Inter, sans-serif' }}>🎨 Generating your image... This may take 10-30 seconds</span>
-          <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>Powered by AI Image Generation</span>
+          <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>Attempt {attempt + 1} of {urls.length} • Powered by AI</span>
         </div>
       )}
 
       <img 
-        src={imageUrl} 
+        src={currentUrl} 
         alt={prompt}
-        crossOrigin="anonymous"
         style={{ width: '100%', maxHeight: '550px', objectFit: 'contain', display: status === 'loaded' ? 'block' : 'none', background: '#0a0a1a' }}
         onLoad={() => setStatus('loaded')}
         onError={() => {
-          if (retryCount < 3) {
-            setRetryCount(retryCount + 1);
+          if (attempt < urls.length - 1) {
+            setAttempt(attempt + 1);
             setStatus('loading');
           } else {
             setStatus('error');
@@ -59,8 +69,8 @@ function AIImageRenderer({ prompt }) {
 
       {status === 'error' && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px', color: '#ff5555', fontSize: '0.9rem', flexDirection: 'column', gap: '15px' }}>
-          <span>⚠️ Image generation failed after 3 attempts.</span>
-          <button onClick={() => { setRetryCount(0); setStatus('loading'); }} style={{ background: 'rgba(0,242,254,0.1)', border: '1px solid #00f2fe', color: '#00f2fe', padding: '8px 20px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
+          <span>⚠️ Image generation failed. The AI server may be busy.</span>
+          <button onClick={() => { setAttempt(0); setStatus('loading'); }} style={{ background: 'rgba(0,242,254,0.1)', border: '1px solid #00f2fe', color: '#00f2fe', padding: '8px 20px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
             🔄 Retry
           </button>
         </div>

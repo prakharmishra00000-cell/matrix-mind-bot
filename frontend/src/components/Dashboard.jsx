@@ -9,10 +9,7 @@ import CouncilRoom from './CouncilRoom';
 import WorkflowPanel from './WorkflowPanel';
 
 
-const MindMap3D = React.lazy(() => import('./MindMap3D'));
-const Interactive3DObject = React.lazy(() => import('./Interactive3DObject'));
-const AnimatedScene3D = React.lazy(() => import('./AnimatedScenes'));
-const DynamicAnimatedScene = React.lazy(() => import('./DynamicAnimatedScene'));
+// 3D views disabled in favor of perfect 3D AI images
 
 // AI Image Renderer with loading state and retry across multiple providers
 function AIImageRenderer({ prompt }) {
@@ -146,58 +143,16 @@ function MermaidChart({ chartCode, defaultTo3D = false }) {
 
   return (
     <div className="mermaid-chart-card glass-panel" style={{ margin: '15px 0', padding: '15px', borderRadius: '12px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.08)', width: '100%' }}>
-      {/* Toggle headers */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '8px' }}>
         <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--accent-cyan)', fontFamily: 'var(--font-heading)' }}>
           📊 Interactive Visualization
         </span>
-        <div style={{ display: 'flex', gap: '5px', background: 'rgba(0,0,0,0.3)', padding: '2px', borderRadius: '6px' }}>
-          <button 
-            onClick={() => setViewMode('2d')}
-            style={{
-              background: viewMode === '2d' ? 'var(--bg-glass-active)' : 'transparent',
-              color: viewMode === '2d' ? 'var(--text-main)' : 'var(--text-muted)',
-              border: 'none',
-              padding: '4px 10px',
-              fontSize: '0.75rem',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 600,
-              transition: 'var(--transition-smooth)'
-            }}
-          >
-            2D View
-          </button>
-          <button 
-            onClick={() => setViewMode('3d')}
-            style={{
-              background: viewMode === '3d' ? 'var(--bg-glass-active)' : 'transparent',
-              color: viewMode === '3d' ? 'var(--text-main)' : 'var(--text-muted)',
-              border: 'none',
-              padding: '4px 10px',
-              fontSize: '0.75rem',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 600,
-              transition: 'var(--transition-smooth)'
-            }}
-          >
-            3D Mind Map
-          </button>
-        </div>
       </div>
-
-      {viewMode === '2d' ? (
-        <div 
-          className="mermaid-graph-container" 
-          style={{ padding: '10px', overflowX: 'auto', display: 'flex', justifyContent: 'center' }}
-          dangerouslySetInnerHTML={{ __html: svg }} 
-        />
-      ) : (
-        <React.Suspense fallback={<div style={{ padding: '20px', color: 'var(--accent-cyan)', textAlign: 'center', fontFamily: 'var(--font-heading)' }}>Loading 3D Mind Map...</div>}>
-          <MindMap3D chartCode={chartCode} />
-        </React.Suspense>
-      )}
+      <div 
+        className="mermaid-graph-container" 
+        style={{ padding: '10px', overflowX: 'auto', display: 'flex', justifyContent: 'center' }}
+        dangerouslySetInnerHTML={{ __html: svg }} 
+      />
     </div>
   );
 }
@@ -985,10 +940,12 @@ function Dashboard({
     while ((animMatch = animatedRegex.exec(text)) !== null) {
       const scene = animMatch[1].trim();
       const label = animMatch[2] ? animMatch[2].trim() : null;
+      const displayLabel = label || scene;
       topLevelElements.push(
-        <React.Suspense key={`anim-${animMatch.index}`} fallback={<div style={{padding:'20px',color:'#00f2fe',textAlign:'center',background:'rgba(0,0,0,0.15)',borderRadius:'12px',border:'1px solid rgba(0,242,254,0.1)',fontSize:'0.85rem',margin:'15px 0'}}>🎬 Loading 3D Scene...</div>}>
-          <AnimatedScene3D scene={scene} label={label} />
-        </React.Suspense>
+        <AIImageRenderer 
+          key={`anim-${animMatch.index}`} 
+          prompt={`A perfect, photorealistic, ultra-detailed 3D volumetric render of a ${displayLabel}, high resolution 3D image style, cinematic lighting, octane render, 8k, photorealistic details`} 
+        />
       );
     }
 
@@ -998,10 +955,12 @@ function Dashboard({
     while ((dynMatch = dynamicRegex.exec(text)) !== null) {
       const scene = dynMatch[1].trim();
       const label = dynMatch[2] ? dynMatch[2].trim() : null;
+      const displayLabel = label || scene;
       topLevelElements.push(
-        <React.Suspense key={`dyn-${dynMatch.index}`} fallback={<div style={{padding:'20px',color:'#00f2fe',textAlign:'center',background:'rgba(0,0,0,0.15)',borderRadius:'12px',border:'1px solid rgba(0,242,254,0.1)',fontSize:'0.85rem',margin:'15px 0'}}>🎬 Loading 3D Scene...</div>}>
-          <DynamicAnimatedScene scene={scene} label={label} />
-        </React.Suspense>
+        <AIImageRenderer 
+          key={`dyn-${dynMatch.index}`} 
+          prompt={`A perfect, photorealistic, ultra-detailed 3D volumetric render of a ${displayLabel}, high resolution 3D image style, cinematic lighting, octane render, 8k, photorealistic details`} 
+        />
       );
     }
 
@@ -1022,10 +981,16 @@ function Dashboard({
       const composite = compositeParam ? compositeParam[1].trim() : null;
       const label = textParam ? textParam[1].trim() : (composite ? "Custom 3D Object" : `${color || ''} ${material || ''} ${shape || 'Shape'}`);
 
+      let shapePrompt = `A perfect, photorealistic, ultra-detailed 3D render of a ${shape || label || "custom 3D shape"}`;
+      if (color) shapePrompt += `, color is ${color}`;
+      if (material) shapePrompt += `, material texture is ${material}`;
+      shapePrompt += `, high resolution 3D image style, cinematic lighting, octane render, 8k`;
+
       topLevelElements.push(
-        <React.Suspense key={`shape-${shapeMatch.index}`} fallback={<div style={{ padding: '15px', color: 'var(--accent-cyan)', textAlign: 'center', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', fontSize: '0.85rem' }}>Loading 3D Visualizer...</div>}>
-          <Interactive3DObject shape={shape} color={color} material={material} composite={composite} label={label} />
-        </React.Suspense>
+        <AIImageRenderer 
+          key={`shape-${shapeMatch.index}`} 
+          prompt={shapePrompt} 
+        />
       );
     }
 

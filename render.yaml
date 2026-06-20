@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: matrixmind-admin
+    runtime: node
+    buildCommand: cd frontend && npm install && npx vite build && cd ../backend && npm install
+    startCommand: cd backend && node server.js
+    envVars:
+      - key: BOT_API_URL
+        value: https://ai-chat-bot-htn4.onrender.com

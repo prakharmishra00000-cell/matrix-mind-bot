@@ -974,7 +974,47 @@ function Dashboard({
       parts.push({ type: 'text', content: remainingText });
     }
 
-    return parts.map((part, i) => {
+    // ── TOP-LEVEL TOKEN SCANNER ──────────────────────────────────────────
+    // Scan the FULL raw text for 3D/image tokens BEFORE line-by-line parsing.
+    // This ensures tokens work even if they appear mid-paragraph or in code blocks.
+    const topLevelElements = [];
+
+    // Scan for [3D_ANIMATED: scene=...] anywhere in text
+    const animatedRegex = /\[3D_ANIMATED:\s*scene\s*=\s*([^\],]+)\]/gi;
+    let animMatch;
+    while ((animMatch = animatedRegex.exec(text)) !== null) {
+      const scene = animMatch[1].trim();
+      topLevelElements.push(
+        <React.Suspense key={`anim-${animMatch.index}`} fallback={<div style={{padding:'20px',color:'#00f2fe',textAlign:'center',background:'rgba(0,0,0,0.15)',borderRadius:'12px',border:'1px solid rgba(0,242,254,0.1)',fontSize:'0.85rem',margin:'15px 0'}}>🎬 Loading 3D Scene...</div>}>
+          <AnimatedScene3D scene={scene} />
+        </React.Suspense>
+      );
+    }
+
+    // Scan for [3D_DYNAMIC: scene=...] anywhere in text
+    const dynamicRegex = /\[3D_DYNAMIC:\s*scene\s*=\s*([^\],]+)\]/gi;
+    let dynMatch;
+    while ((dynMatch = dynamicRegex.exec(text)) !== null) {
+      const scene = dynMatch[1].trim();
+      topLevelElements.push(
+        <React.Suspense key={`dyn-${dynMatch.index}`} fallback={<div style={{padding:'20px',color:'#00f2fe',textAlign:'center',background:'rgba(0,0,0,0.15)',borderRadius:'12px',border:'1px solid rgba(0,242,254,0.1)',fontSize:'0.85rem',margin:'15px 0'}}>🎬 Loading 3D Scene...</div>}>
+          <DynamicAnimatedScene scene={scene} />
+        </React.Suspense>
+      );
+    }
+
+    // Strip raw tokens from text parts so they don't display as text
+    const stripTokens = (s) => s
+      .replace(/\[3D_ANIMATED:[^\]]*\]/gi, '')
+      .replace(/\[3D_DYNAMIC:[^\]]*\]/gi, '')
+      .replace(/`\[3D_ANIMATED:[^\]]*\]`/gi, '')
+      .replace(/`\[3D_DYNAMIC:[^\]]*\]`/gi, '');
+
+    const cleanedParts = parts.map(p =>
+      p.type === 'text' ? { ...p, content: stripTokens(p.content) } : p
+    );
+
+    return [...topLevelElements, ...cleanedParts.map((part, i) => {
       if (part.type === 'mermaid') {
         return <MermaidChart key={i} chartCode={part.content} defaultTo3D={is3DDefault} />;
       }
@@ -1103,7 +1143,7 @@ function Dashboard({
           })}
         </div>
       );
-    });
+    })];
   };
 
   const formatInlineStyles = (line) => {
